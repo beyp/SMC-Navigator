@@ -55,3 +55,17 @@ pytest -q
 - Telegram/Discord alert integrations
 - Human validation mode before execution
 - Future execution engine with strict safeguards and explicit opt-in
+
+
+## Reporting
+- Saves charts to `reports/`:
+  - `equity_curve.png`
+  - `latest_symbol_candles.png`
+- Prints trade statistics in CLI:
+  - total trades
+  - wins
+  - losses
+  - winrate
+  - total pnl
+  - average pnl
+  - max drawdown
