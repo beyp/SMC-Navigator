@@ -58,9 +58,9 @@ pytest -q
 
 
 ## Reporting
-- Saves charts to `reports/`:
-  - `equity_curve.png`
-  - `latest_symbol_candles.png`
+- Saves charts to `reports/charts/` (one per symbol):
+  - `ETH_EUR.png`, `BTC_EUR.png`, etc.
+- Also saves `reports/equity_curve.png`.
 - Prints trade statistics in CLI:
   - total trades
   - wins

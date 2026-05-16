@@ -6,7 +6,7 @@ from smc_navigator.exchanges.binance import BinanceExchange
 from smc_navigator.exchanges.kraken import KrakenExchange
 from smc_navigator.market_data.candles import fetch_candles_df
 from smc_navigator.market_data.indicators import add_indicators
-from smc_navigator.reporting.charts import plot_equity_curve, plot_latest_symbol_candles
+from smc_navigator.reporting.charts import plot_equity_curve, plot_symbol_chart
 from smc_navigator.reporting.stats import compute_trade_stats
 from smc_navigator.simulator.engine import run_backtest_for_symbol
 from smc_navigator.strategy.rules import evaluate_signal
@@ -29,12 +29,10 @@ def run(config_path: str = "config.yaml") -> None:
     exchange = _build_exchange(config["exchange"])
     journal_path = Path("data/trade_journal.csv")
     reports_dir = Path("reports")
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    charts_dir = reports_dir / "charts"
+    charts_dir.mkdir(parents=True, exist_ok=True)
 
     all_trades = []
-    latest_symbol_df = None
-    latest_symbol_name = ""
-    latest_signal = None
 
     for symbol in config["symbols"]:
         candles = fetch_candles_df(exchange, symbol, config["timeframe"])
@@ -51,12 +49,18 @@ def run(config_path: str = "config.yaml") -> None:
         )
         all_trades.extend(trades)
 
-        latest_symbol_df = enriched
-        latest_symbol_name = symbol
-        latest_signal = signal
+        latest_trade = trades[-1] if trades else None
+        safe_symbol = symbol.replace("/", "_")
+        plot_symbol_chart(
+            df=enriched,
+            symbol=symbol,
+            output_path=charts_dir / f"{safe_symbol}.png",
+            trade=latest_trade,
+            confidence_score=signal.confidence_score,
+        )
 
         logger.info(
-            "\nSymbol: %s\nSignal: %s\nConfidence: %s\nEntry: %.4f\nSL: %.4f\nTP: %.4f\nReason: %s\nBacktest trades: %s\n",
+            "\nSymbol: %s\nSignal: %s\nConfidence: %s\nEntry: %.4f\nSL: %.4f\nTP: %.4f\nReason: %s\nBacktest trades: %s\nChart: %s\n",
             symbol,
             signal_name,
             signal.confidence_score,
@@ -65,23 +69,14 @@ def run(config_path: str = "config.yaml") -> None:
             signal.suggested_take_profit,
             "; ".join(signal.reason),
             len(trades),
+            charts_dir / f"{safe_symbol}.png",
         )
 
     stats = compute_trade_stats(all_trades)
     plot_equity_curve(all_trades, reports_dir / "equity_curve.png")
 
-    if latest_symbol_df is not None and latest_signal is not None:
-        plot_latest_symbol_candles(
-            df=latest_symbol_df,
-            symbol=latest_symbol_name,
-            output_path=reports_dir / "latest_symbol_candles.png",
-            entry=latest_signal.entry_price,
-            stop_loss=latest_signal.suggested_stop_loss,
-            take_profit=latest_signal.suggested_take_profit,
-        )
-
     logger.info(
-        "\n=== Trade Statistics ===\nTotal trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\nTotal PnL: %.4f\nAverage PnL: %.4f\nMax drawdown: %.4f\nReports: %s\n",
+        "\n=== Trade Statistics ===\nTotal trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\nTotal PnL: %.4f\nAverage PnL: %.4f\nMax drawdown: %.4f\nReports: %s\nCharts: %s\n",
         stats.total_trades,
         stats.wins,
         stats.losses,
@@ -90,4 +85,5 @@ def run(config_path: str = "config.yaml") -> None:
         stats.average_pnl,
         stats.max_drawdown,
         reports_dir,
+        charts_dir,
     )
