@@ -36,3 +36,38 @@ def test_compute_trade_stats() -> None:
     assert stats.total_pnl == 2.0
     assert round(stats.average_pnl, 4) == round(2.0 / 3.0, 4)
     assert stats.max_drawdown >= 0
+
+
+def test_plot_symbol_chart_handles_nan_indicators(tmp_path, monkeypatch) -> None:
+    import pandas as pd
+
+    from smc_navigator.reporting import charts
+
+    captured = {}
+
+    def fake_plot(*args, **kwargs):
+        captured["called"] = True
+        captured["addplot"] = kwargs.get("addplot")
+
+    monkeypatch.setattr(charts.mpf, "plot", fake_plot)
+
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01", periods=10, freq="15min", tz="UTC"),
+            "open": [100 + i for i in range(10)],
+            "high": [101 + i for i in range(10)],
+            "low": [99 + i for i in range(10)],
+            "close": [100.5 + i for i in range(10)],
+            "volume": [1000 for _ in range(10)],
+            "ema_9": [float("nan") for _ in range(10)],
+            "ema_26": [float("nan") for _ in range(10)],
+            "ema_50": [float("nan") for _ in range(10)],
+            "vwap": [float("nan") for _ in range(10)],
+            "support": [float("nan") for _ in range(10)],
+            "resistance": [float("nan") for _ in range(10)],
+        }
+    )
+
+    charts.plot_symbol_chart(df=df, symbol="ETH/EUR", output_path=tmp_path / "chart.png", trade=None, confidence_score=50)
+
+    assert captured.get("called") is True
