@@ -1,0 +1,10 @@
+exchange: kraken
+symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
+timeframe: "15m"
+starting_capital: 100
+risk_per_trade_pct: 1
+default_stop_loss_pct: 1.0
+default_take_profit_pct: 2.0
+max_open_trades: 1
+simulation_mode: true
+allow_real_orders: false
