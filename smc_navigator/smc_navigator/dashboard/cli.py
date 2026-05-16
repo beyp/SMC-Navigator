@@ -6,9 +6,8 @@ from smc_navigator.exchanges.binance import BinanceExchange
 from smc_navigator.exchanges.kraken import KrakenExchange
 from smc_navigator.market_data.candles import fetch_candles_df
 from smc_navigator.market_data.indicators import add_indicators
-from smc_navigator.simulator.engine import simulate_signal
+from smc_navigator.simulator.engine import run_backtest_for_symbol
 from smc_navigator.strategy.rules import evaluate_signal
-
 
 
 def _build_exchange(name: str):
@@ -17,7 +16,6 @@ def _build_exchange(name: str):
     if name.lower() == "binance":
         return BinanceExchange()
     raise ValueError(f"Unsupported exchange: {name}")
-
 
 
 def run(config_path: str = "config.yaml") -> None:
@@ -32,18 +30,25 @@ def run(config_path: str = "config.yaml") -> None:
     for symbol in config["symbols"]:
         candles = fetch_candles_df(exchange, symbol, config["timeframe"])
         enriched = add_indicators(candles)
-        signal = evaluate_signal(symbol, enriched, config["default_stop_loss_pct"], config["default_take_profit_pct"])
-        trade = simulate_signal(config, signal, enriched, str(journal_path))
 
-        signal_name = "NO_TRADE" if signal.direction == "NONE" else f"{signal.direction}_CANDIDATE"
+        latest_signal = evaluate_signal(symbol, enriched, config["default_stop_loss_pct"], config["default_take_profit_pct"])
+        signal_name = "NO_TRADE" if latest_signal.direction == "NONE" else f"{latest_signal.direction}_CANDIDATE"
+
+        trades = run_backtest_for_symbol(
+            config=config,
+            symbol=symbol,
+            enriched_df=enriched,
+            journal_path=str(journal_path),
+        )
+
         logger.info(
-            "\nSymbol: %s\nSignal: %s\nConfidence: %s\nEntry: %.4f\nSL: %.4f\nTP: %.4f\nReason: %s\nTrade status: %s\n",
+            "\nSymbol: %s\nSignal: %s\nConfidence: %s\nEntry: %.4f\nSL: %.4f\nTP: %.4f\nReason: %s\nBacktest trades: %s\n",
             symbol,
             signal_name,
-            signal.confidence_score,
-            signal.entry_price,
-            signal.suggested_stop_loss,
-            signal.suggested_take_profit,
-            "; ".join(signal.reason),
-            trade.status if trade else "N/A",
+            latest_signal.confidence_score,
+            latest_signal.entry_price,
+            latest_signal.suggested_stop_loss,
+            latest_signal.suggested_take_profit,
+            "; ".join(latest_signal.reason),
+            len(trades),
         )
