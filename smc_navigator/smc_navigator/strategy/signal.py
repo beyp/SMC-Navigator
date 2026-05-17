@@ -11,6 +11,9 @@ class Signal:
     timestamp: datetime
     direction: Direction
     confidence_score: int
+    setup_score: int
+    setup_grade: str
+    missing_conditions: list[str]
     reason: list[str]
     tags: list[str]
     entry_price: float

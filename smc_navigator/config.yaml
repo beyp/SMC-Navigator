@@ -26,3 +26,4 @@ historical_limit_per_symbol: 1000
 backtest_since: "2025-01-01T00:00:00Z"
 backtest_until: null
 max_fetch_batches: 10
+minimum_setup_score: 60

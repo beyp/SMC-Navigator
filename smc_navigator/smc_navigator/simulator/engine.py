@@ -27,6 +27,7 @@ def _passes_filters(config: dict, signal, row: pd.Series, symbol_trade_count: in
     if idx <= cooldown_until_idx: reject_tags.append("cooldown")
     if symbol_trade_count >= int(config.get("max_trades_per_symbol", 999999)): reject_tags.append("symbol_trade_cap")
     if signal.confidence_score < int(config.get("min_confidence_score", 0)): reject_tags.append("low_confidence")
+    if signal.setup_score < int(config.get("minimum_setup_score", 0)): reject_tags.append("low_setup_score")
     if signal.direction == "LONG" and not bool(config.get("enable_long_trades", True)): reject_tags.append("long_disabled")
     if signal.direction == "SHORT" and not bool(config.get("enable_short_trades", True)): reject_tags.append("short_disabled")
 
@@ -82,7 +83,7 @@ def build_trade_from_signal(config: dict, signal, reason_suffix: str = "") -> Tr
     return Trade(str(uuid4()), signal.timestamp, config["exchange"], signal.symbol, config["timeframe"], signal.direction, entry, sl, tp, size, risk_amount, signal.confidence_score, "OPEN", None, None, None, 0.0, 0.0, 0.0, 0.0, 0, rr, reason, "|".join(signal.tags))
 
 
-def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame, journal_path: str, h1_df: pd.DataFrame | None = None, h4_df: pd.DataFrame | None = None, warmup: int = 60, max_holding_candles: int = 10) -> list[Trade]:
+def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame, journal_path: str, h1_df: pd.DataFrame | None = None, h4_df: pd.DataFrame | None = None, warmup: int = 60, max_holding_candles: int = 10, rejected_setups: list[dict] | None = None, watch_setups: list[dict] | None = None) -> list[Trade]:
     trades: list[Trade] = []
     if len(enriched_df) <= warmup: return trades
     taker_fee_pct, spread_pct = float(config.get("taker_fee_pct", 0.0)), float(config.get("spread_pct", 0.0))
@@ -103,10 +104,16 @@ def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame
             h4_hist = h4_df[h4_df["timestamp"] <= cutoff]
 
         signal = evaluate_signal(symbol, history, config["default_stop_loss_pct"], config["default_take_profit_pct"], h1_close=h1_close, h1_ema50=h1_ema50, h1_df=h1_hist, h4_df=h4_hist)
+        if 40 <= signal.setup_score < int(config.get("minimum_setup_score", 0)) and watch_setups is not None:
+            watch_setups.append({"symbol": symbol, "timestamp": str(signal.timestamp), "direction": signal.direction, "setup_score": signal.setup_score, "grade": signal.setup_grade, "missing_conditions": signal.missing_conditions})
         if signal.direction == "NONE":
+            if rejected_setups is not None:
+                rejected_setups.append({"symbol": symbol, "timestamp": str(signal.timestamp), "failed_conditions": signal.missing_conditions + ["no_direction_trigger"], "setup_score": signal.setup_score})
             continue
         passed, reject_tags = _passes_filters(config, signal, history.iloc[-1], symbol_trade_count, cooldown_until_idx, idx)
         if not passed:
+            if rejected_setups is not None:
+                rejected_setups.append({"symbol": symbol, "timestamp": str(signal.timestamp), "failed_conditions": reject_tags + signal.missing_conditions, "setup_score": signal.setup_score})
             continue
 
         trade = build_trade_from_signal(config, signal, reason_suffix=f"signal_index={idx}")
