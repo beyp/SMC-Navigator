@@ -7,7 +7,7 @@ from smc_navigator.exchanges.kraken import KrakenExchange
 from smc_navigator.market_data.candles import fetch_candles_df
 from smc_navigator.market_data.indicators import add_indicators
 from smc_navigator.reporting.charts import plot_equity_curve, plot_symbol_chart
-from smc_navigator.reporting.stats import compute_trade_stats
+from smc_navigator.reporting.stats import compute_trade_stats, save_backtest_summary
 from smc_navigator.simulator.engine import run_backtest_for_symbol
 from smc_navigator.strategy.rules import evaluate_signal
 
@@ -33,59 +33,53 @@ def run(config_path: str = "config.yaml") -> None:
     charts_dir.mkdir(parents=True, exist_ok=True)
 
     all_trades = []
-
     for symbol in config["symbols"]:
         candles = fetch_candles_df(exchange, symbol, config["timeframe"])
         enriched = add_indicators(candles)
-
         signal = evaluate_signal(symbol, enriched, config["default_stop_loss_pct"], config["default_take_profit_pct"])
-        signal_name = "NO_TRADE" if signal.direction == "NONE" else f"{signal.direction}_CANDIDATE"
-
-        trades = run_backtest_for_symbol(
-            config=config,
-            symbol=symbol,
-            enriched_df=enriched,
-            journal_path=str(journal_path),
-        )
+        trades = run_backtest_for_symbol(config=config, symbol=symbol, enriched_df=enriched, journal_path=str(journal_path))
         all_trades.extend(trades)
-
         latest_trade = trades[-1] if trades else None
         safe_symbol = symbol.replace("/", "_")
-        plot_symbol_chart(
-            df=enriched,
-            symbol=symbol,
-            output_path=charts_dir / f"{safe_symbol}.png",
-            trade=latest_trade,
-            confidence_score=signal.confidence_score,
-        )
+        plot_symbol_chart(df=enriched, symbol=symbol, output_path=charts_dir / f"{safe_symbol}.png", trade=latest_trade, confidence_score=signal.confidence_score)
 
-        logger.info(
-            "\nSymbol: %s\nSignal: %s\nConfidence: %s\nEntry: %.4f\nSL: %.4f\nTP: %.4f\nReason: %s\nBacktest trades: %s\nChart: %s\n",
-            symbol,
-            signal_name,
-            signal.confidence_score,
-            signal.entry_price,
-            signal.suggested_stop_loss,
-            signal.suggested_take_profit,
-            "; ".join(signal.reason),
-            len(trades),
-            charts_dir / f"{safe_symbol}.png",
-        )
-
-    stats = compute_trade_stats(all_trades)
+    stats_after = compute_trade_stats(all_trades)
     plot_equity_curve(all_trades, reports_dir / "equity_curve.png")
+    save_backtest_summary(stats_after, reports_dir)
+
+    # comparison before fees vs after fees
+    gross_total = sum(t.gross_pnl for t in all_trades)
+    net_total = stats_after.net_pnl_after_fees
+    fees_impact = gross_total - net_total
 
     logger.info(
-        "\n=== Trade Statistics ===\nTotal trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\nTotal PnL: %.4f\nAverage PnL: %.4f\nMax drawdown: %.4f\nTotal fees: %.4f\nAverage fees: %.4f\nReports: %s\nCharts: %s\n",
-        stats.total_trades,
-        stats.wins,
-        stats.losses,
-        stats.winrate,
-        stats.total_pnl,
-        stats.average_pnl,
-        stats.max_drawdown,
-        stats.total_fees,
-        stats.average_fees,
+        "\n=== Backtest Summary ===\n"
+        "Total trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\n"
+        "Gross profit: %.4f\nGross loss: %.4f\nNet PnL after fees: %.4f\n"
+        "Total fees paid: %.4f\nAverage PnL/trade: %.4f\nProfit factor: %.4f\nExpectancy: %.4f\n"
+        "Max drawdown: %.4f\nAverage holding candles: %.2f\n"
+        "PnL by symbol: %s\nPnL by direction: %s\n"
+        "\n=== Fees Impact Comparison ===\n"
+        "Results before fees (gross): %.4f\nResults after fees (net): %.4f\nFees impact: %.4f\n"
+        "Reports: %s\nCharts: %s\n",
+        stats_after.total_trades,
+        stats_after.wins,
+        stats_after.losses,
+        stats_after.winrate,
+        stats_after.gross_profit,
+        stats_after.gross_loss,
+        stats_after.net_pnl_after_fees,
+        stats_after.total_fees_paid,
+        stats_after.average_pnl_per_trade,
+        stats_after.profit_factor,
+        stats_after.expectancy,
+        stats_after.max_drawdown,
+        stats_after.average_holding_candles,
+        stats_after.pnl_by_symbol,
+        stats_after.pnl_by_direction,
+        gross_total,
+        net_total,
+        fees_impact,
         reports_dir,
         charts_dir,
     )

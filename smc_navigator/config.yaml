@@ -11,3 +11,11 @@ allow_real_orders: false
 maker_fee_pct: 0.16
 taker_fee_pct: 0.26
 spread_pct: 0.05
+min_confidence_score: 60
+enable_long_trades: true
+enable_short_trades: true
+min_rr_ratio: 1.2
+max_trades_per_symbol: 3
+cooldown_candles_after_trade: 3
+max_distance_from_vwap_pct: 1.0
+max_distance_from_ema26_pct: 1.0
