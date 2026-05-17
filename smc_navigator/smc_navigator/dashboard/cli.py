@@ -87,6 +87,7 @@ def run(config_path: str = "config.yaml") -> None:
     for symbol in config["symbols"]:
         m15 = add_indicators(fetch_candles_df(exchange, symbol, config["timeframe"]))
         h1 = add_indicators(fetch_candles_df(exchange, symbol, "1h"))
+        h4 = add_indicators(fetch_candles_df(exchange, symbol, "4h"))
         h1_row = h1.iloc[-1] if not h1.empty else None
         signal = evaluate_signal(
             symbol,
@@ -95,8 +96,10 @@ def run(config_path: str = "config.yaml") -> None:
             config["default_take_profit_pct"],
             h1_close=float(h1_row["close"]) if h1_row is not None else None,
             h1_ema50=float(h1_row["ema_50"]) if h1_row is not None else None,
+            h1_df=h1,
+            h4_df=h4,
         )
-        trades = run_backtest_for_symbol(config=config, symbol=symbol, enriched_df=m15, h1_df=h1, journal_path=str(journal_path))
+        trades = run_backtest_for_symbol(config=config, symbol=symbol, enriched_df=m15, h1_df=h1, h4_df=h4, journal_path=str(journal_path))
         all_trades.extend(trades)
 
         logger.info(

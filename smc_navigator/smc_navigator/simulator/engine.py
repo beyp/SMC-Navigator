@@ -82,7 +82,7 @@ def build_trade_from_signal(config: dict, signal, reason_suffix: str = "") -> Tr
     return Trade(str(uuid4()), signal.timestamp, config["exchange"], signal.symbol, config["timeframe"], signal.direction, entry, sl, tp, size, risk_amount, signal.confidence_score, "OPEN", None, None, None, 0.0, 0.0, 0.0, 0.0, 0, rr, reason, "|".join(signal.tags))
 
 
-def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame, journal_path: str, h1_df: pd.DataFrame | None = None, warmup: int = 60, max_holding_candles: int = 10) -> list[Trade]:
+def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame, journal_path: str, h1_df: pd.DataFrame | None = None, h4_df: pd.DataFrame | None = None, warmup: int = 60, max_holding_candles: int = 10) -> list[Trade]:
     trades: list[Trade] = []
     if len(enriched_df) <= warmup: return trades
     taker_fee_pct, spread_pct = float(config.get("taker_fee_pct", 0.0)), float(config.get("spread_pct", 0.0))
@@ -91,14 +91,18 @@ def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame
     for idx in range(warmup, len(enriched_df) - 1):
         history = enriched_df.iloc[: idx + 1]
         h1_close = h1_ema50 = None
+        h1_hist = h4_hist = None
         if h1_df is not None and not h1_df.empty:
             cutoff = history.iloc[-1]["timestamp"]
             h1_hist = h1_df[h1_df["timestamp"] <= cutoff]
             if not h1_hist.empty:
                 h1_row = h1_hist.iloc[-1]
                 h1_close, h1_ema50 = float(h1_row["close"]), float(h1_row.get("ema_50", h1_row["close"]))
+        if h4_df is not None and not h4_df.empty:
+            cutoff = history.iloc[-1]["timestamp"]
+            h4_hist = h4_df[h4_df["timestamp"] <= cutoff]
 
-        signal = evaluate_signal(symbol, history, config["default_stop_loss_pct"], config["default_take_profit_pct"], h1_close=h1_close, h1_ema50=h1_ema50)
+        signal = evaluate_signal(symbol, history, config["default_stop_loss_pct"], config["default_take_profit_pct"], h1_close=h1_close, h1_ema50=h1_ema50, h1_df=h1_hist, h4_df=h4_hist)
         if signal.direction == "NONE":
             continue
         passed, reject_tags = _passes_filters(config, signal, history.iloc[-1], symbol_trade_count, cooldown_until_idx, idx)
