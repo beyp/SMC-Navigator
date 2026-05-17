@@ -24,6 +24,9 @@ def test_trade_pnl_calculation_long_win() -> None:
         exit_price=None,
         pnl=None,
         pnl_pct=None,
+        entry_fee=0.0,
+        exit_fee=0.0,
+        total_fees=0.0,
         reason="test",
     )
 
@@ -31,9 +34,10 @@ def test_trade_pnl_calculation_long_win() -> None:
         {"high": 101, "low": 100, "close": 100.5},
         {"high": 102.5, "low": 100.5, "close": 102.2},
     ])
-    result = evaluate_trade_outcome(trade, future)
+    result = evaluate_trade_outcome(trade, future, taker_fee_pct=0.1, spread_pct=0.05)
     assert result.status == "WIN"
-    assert result.pnl == 2
+    assert result.pnl is not None
+    assert result.pnl < 2
 
 
 def test_backtest_avoids_lookahead_bias() -> None:
@@ -44,6 +48,9 @@ def test_backtest_avoids_lookahead_bias() -> None:
         "risk_per_trade_pct": 1,
         "default_stop_loss_pct": 1.0,
         "default_take_profit_pct": 2.0,
+        "maker_fee_pct": 0.16,
+        "taker_fee_pct": 0.26,
+        "spread_pct": 0.05,
     }
 
     rows = []

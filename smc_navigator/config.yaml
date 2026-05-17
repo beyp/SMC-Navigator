@@ -8,3 +8,6 @@ default_take_profit_pct: 2.0
 max_open_trades: 1
 simulation_mode: true
 allow_real_orders: false
+maker_fee_pct: 0.16
+taker_fee_pct: 0.26
+spread_pct: 0.05

@@ -22,6 +22,9 @@ def _trade(status: str, pnl: float) -> Trade:
         exit_price=100 + pnl,
         pnl=pnl,
         pnl_pct=pnl,
+        entry_fee=0.2,
+        exit_fee=0.2,
+        total_fees=0.4,
         reason="test",
     )
 
@@ -71,3 +74,10 @@ def test_plot_symbol_chart_handles_nan_indicators(tmp_path, monkeypatch) -> None
     charts.plot_symbol_chart(df=df, symbol="ETH/EUR", output_path=tmp_path / "chart.png", trade=None, confidence_score=50)
 
     assert captured.get("called") is True
+
+
+def test_fee_stats_present() -> None:
+    trades = [_trade("WIN", 1.0), _trade("LOSS", -0.5)]
+    stats = compute_trade_stats(trades)
+    assert stats.total_fees == 0.8
+    assert stats.average_fees == 0.4

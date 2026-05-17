@@ -7,7 +7,7 @@ from smc_navigator.simulator.trade import Trade
 HEADER = [
     "trade_id", "timestamp", "exchange", "symbol", "timeframe", "direction", "entry_price", "stop_loss",
     "take_profit", "position_size", "risk_amount", "confidence_score", "status", "exit_price", "pnl",
-    "pnl_pct", "reason",
+    "pnl_pct", "entry_fee", "exit_fee", "total_fees", "reason",
 ]
 
 

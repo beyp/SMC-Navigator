@@ -12,6 +12,8 @@ class TradeStats:
     total_pnl: float
     average_pnl: float
     max_drawdown: float
+    total_fees: float
+    average_fees: float
 
 
 def compute_trade_stats(trades: list[Trade]) -> TradeStats:
@@ -21,8 +23,11 @@ def compute_trade_stats(trades: list[Trade]) -> TradeStats:
     winrate = (wins / total_trades * 100) if total_trades else 0.0
 
     pnls = [float(t.pnl or 0.0) for t in trades]
+    fee_values = [float(getattr(t, "total_fees", 0.0) or 0.0) for t in trades]
     total_pnl = sum(pnls)
     average_pnl = (total_pnl / total_trades) if total_trades else 0.0
+    total_fees = sum(fee_values)
+    average_fees = (total_fees / total_trades) if total_trades else 0.0
 
     equity = 0.0
     peak = 0.0
@@ -33,12 +38,4 @@ def compute_trade_stats(trades: list[Trade]) -> TradeStats:
         drawdown = peak - equity
         max_drawdown = max(max_drawdown, drawdown)
 
-    return TradeStats(
-        total_trades=total_trades,
-        wins=wins,
-        losses=losses,
-        winrate=winrate,
-        total_pnl=total_pnl,
-        average_pnl=average_pnl,
-        max_drawdown=max_drawdown,
-    )
+    return TradeStats(total_trades, wins, losses, winrate, total_pnl, average_pnl, max_drawdown, total_fees, average_fees)

@@ -76,7 +76,7 @@ def run(config_path: str = "config.yaml") -> None:
     plot_equity_curve(all_trades, reports_dir / "equity_curve.png")
 
     logger.info(
-        "\n=== Trade Statistics ===\nTotal trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\nTotal PnL: %.4f\nAverage PnL: %.4f\nMax drawdown: %.4f\nReports: %s\nCharts: %s\n",
+        "\n=== Trade Statistics ===\nTotal trades: %s\nWins: %s\nLosses: %s\nWinrate: %.2f%%\nTotal PnL: %.4f\nAverage PnL: %.4f\nMax drawdown: %.4f\nTotal fees: %.4f\nAverage fees: %.4f\nReports: %s\nCharts: %s\n",
         stats.total_trades,
         stats.wins,
         stats.losses,
@@ -84,6 +84,8 @@ def run(config_path: str = "config.yaml") -> None:
         stats.total_pnl,
         stats.average_pnl,
         stats.max_drawdown,
+        stats.total_fees,
+        stats.average_fees,
         reports_dir,
         charts_dir,
     )
