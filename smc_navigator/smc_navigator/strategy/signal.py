@@ -12,6 +12,7 @@ class Signal:
     direction: Direction
     confidence_score: int
     reason: list[str]
+    tags: list[str]
     entry_price: float
     suggested_stop_loss: float
     suggested_take_profit: float

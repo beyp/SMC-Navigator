@@ -19,3 +19,6 @@ max_trades_per_symbol: 3
 cooldown_candles_after_trade: 3
 max_distance_from_vwap_pct: 1.0
 max_distance_from_ema26_pct: 1.0
+min_ema_distance_pct: 0.05
+min_atr_pct: 0.15
+min_range_width_pct: 0.2

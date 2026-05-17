@@ -30,6 +30,7 @@ def _trade(status: str, pnl: float, gross_pnl: float | None = None) -> Trade:
         holding_candles=3,
         rr_ratio=2.0,
         reason="test",
+        tags="trend_following|high_confidence",
     )
 
 

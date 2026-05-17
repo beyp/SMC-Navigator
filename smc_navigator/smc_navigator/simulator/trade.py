@@ -30,6 +30,7 @@ class Trade:
     holding_candles: int
     rr_ratio: float
     reason: str
+    tags: str
 
     def close(self, exit_price: float, status: Status, holding_candles: int, entry_fee: float = 0.0, exit_fee: float = 0.0) -> None:
         self.exit_price = exit_price

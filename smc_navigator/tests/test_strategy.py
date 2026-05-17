@@ -22,3 +22,4 @@ def test_no_trade_signal_generation() -> None:
     signal = evaluate_signal("ETH/EUR", df, 1.0, 2.0)
     assert signal.direction == "NONE"
     assert signal.confidence_score == 20
+    assert isinstance(signal.tags, list)
