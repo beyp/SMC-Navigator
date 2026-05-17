@@ -2,6 +2,8 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 
+import pandas as pd
+
 from smc_navigator.simulator.trade import Trade
 
 
@@ -23,6 +25,8 @@ class TradeStats:
     pnl_by_symbol: dict[str, float]
     pnl_by_direction: dict[str, float]
     pnl_by_tag: dict[str, float]
+    performance_by_month: dict[str, float]
+    performance_by_regime: dict[str, float]
 
 
 def compute_trade_stats(trades: list[Trade]) -> TradeStats:
@@ -32,33 +36,34 @@ def compute_trade_stats(trades: list[Trade]) -> TradeStats:
     winrate = (wins / total_trades * 100) if total_trades else 0.0
     gross_profit = sum((t.gross_pnl if t.gross_pnl > 0 else 0.0) for t in trades)
     gross_loss = sum((t.gross_pnl if t.gross_pnl < 0 else 0.0) for t in trades)
-    net_pnl_after_fees = sum(float(t.pnl or 0.0) for t in trades)
-    total_fees_paid = sum(float(t.total_fees or 0.0) for t in trades)
-    average_pnl_per_trade = (net_pnl_after_fees / total_trades) if total_trades else 0.0
-    profit_factor = (gross_profit / abs(gross_loss)) if gross_loss < 0 else 0.0
-    expectancy = average_pnl_per_trade
+    net = sum(float(t.pnl or 0.0) for t in trades)
+    fees = sum(float(t.total_fees or 0.0) for t in trades)
+    avg = (net / total_trades) if total_trades else 0.0
+    pf = (gross_profit / abs(gross_loss)) if gross_loss < 0 else 0.0
 
-    equity=peak=max_drawdown=0.0
+    eq = peak = mdd = 0.0
     for t in trades:
-        equity += float(t.pnl or 0.0)
-        peak = max(peak, equity)
-        max_drawdown = max(max_drawdown, peak - equity)
+        eq += float(t.pnl or 0.0); peak = max(peak, eq); mdd = max(mdd, peak - eq)
 
-    average_holding_candles = sum(t.holding_candles for t in trades) / total_trades if total_trades else 0.0
-    pnl_by_symbol, pnl_by_direction, pnl_by_tag = {}, {"LONG":0.0,"SHORT":0.0}, {}
+    hold = sum(t.holding_candles for t in trades) / total_trades if total_trades else 0.0
+    by_symbol, by_dir, by_tag, by_month, by_regime = {}, {"LONG": 0.0, "SHORT": 0.0}, {}, {}, {}
     for t in trades:
-        pnl=float(t.pnl or 0.0)
-        pnl_by_symbol[t.symbol]=pnl_by_symbol.get(t.symbol,0.0)+pnl
-        pnl_by_direction[t.direction]=pnl_by_direction.get(t.direction,0.0)+pnl
+        pnl = float(t.pnl or 0.0)
+        by_symbol[t.symbol] = by_symbol.get(t.symbol, 0.0) + pnl
+        by_dir[t.direction] = by_dir.get(t.direction, 0.0) + pnl
+        month = pd.Timestamp(t.timestamp).strftime('%Y-%m')
+        by_month[month] = by_month.get(month, 0.0) + pnl
+        regime = "trend" if "trend_continuation" in (t.tags or "") else "range"
+        by_regime[regime] = by_regime.get(regime, 0.0) + pnl
         for tag in [x.strip() for x in (t.tags or '').split('|') if x.strip()]:
-            pnl_by_tag[tag]=pnl_by_tag.get(tag,0.0)+pnl
+            by_tag[tag] = by_tag.get(tag, 0.0) + pnl
 
-    return TradeStats(total_trades,wins,losses,winrate,gross_profit,gross_loss,net_pnl_after_fees,total_fees_paid,average_pnl_per_trade,profit_factor,expectancy,max_drawdown,average_holding_candles,pnl_by_symbol,pnl_by_direction,pnl_by_tag)
+    return TradeStats(total_trades,wins,losses,winrate,gross_profit,gross_loss,net,fees,avg,pf,avg,mdd,hold,by_symbol,by_dir,by_tag,by_month,by_regime)
 
 
 def save_backtest_summary(stats: TradeStats, reports_dir: str | Path) -> None:
-    reports_path = Path(reports_dir); reports_path.mkdir(parents=True, exist_ok=True)
+    rp = Path(reports_dir); rp.mkdir(parents=True, exist_ok=True)
     payload = asdict(stats)
-    (reports_path / "backtest_summary.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    rows=[(k,v if not isinstance(v,dict) else json.dumps(v)) for k,v in payload.items()]
-    (reports_path / "backtest_summary.csv").write_text("metric,value\n"+"\n".join(f"{k},{v}" for k,v in rows)+"\n", encoding="utf-8")
+    (rp / 'backtest_summary.json').write_text(json.dumps(payload, indent=2), encoding='utf-8')
+    rows = [(k, v if not isinstance(v, dict) else json.dumps(v)) for k, v in payload.items()]
+    (rp / 'backtest_summary.csv').write_text('metric,value\n' + '\n'.join(f'{k},{v}' for k, v in rows) + '\n', encoding='utf-8')
