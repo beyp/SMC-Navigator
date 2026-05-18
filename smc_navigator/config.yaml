@@ -27,3 +27,5 @@ backtest_since: "2025-01-01T00:00:00Z"
 backtest_until: null
 max_fetch_batches: 10
 minimum_setup_score: 60
+investor_capital: 50
+swing_capital: 50
