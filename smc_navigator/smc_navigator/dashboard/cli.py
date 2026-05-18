@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from smc_navigator.core.config_loader import load_config
 from smc_navigator.core.logger import get_logger
@@ -63,6 +64,36 @@ def _simulate_investor_trades(symbol: str, daily: pd.DataFrame, weekly: pd.DataF
     return trades
 
 
+def _plot_investor_regime_chart(path: Path, daily: pd.DataFrame, trades: list[Trade], regime_label: str) -> None:
+    if daily.empty:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(daily["timestamp"], daily["close"], label="Daily Close", color="black")
+    color = {
+        "accumulation": "#b3e5fc",
+        "bullish_expansion": "#c8e6c9",
+        "distribution": "#ffe0b2",
+        "bearish_expansion": "#ffcdd2",
+    }.get(regime_label, "#eeeeee")
+    ax.axhspan(daily["close"].min(), daily["close"].max(), color=color, alpha=0.2, label=f"Regime: {regime_label}")
+    for tr in trades:
+        ax.scatter(tr.timestamp, tr.entry_price, marker="^", color="green")
+        if tr.exit_price is not None:
+            ax.scatter(tr.timestamp, tr.exit_price, marker="v", color="red")
+    ax.legend(); ax.set_title("Investor Regime + Entries/Exits")
+    fig.tight_layout(); fig.savefig(path); plt.close(fig)
+
+
+def _buy_hold_return(daily: pd.DataFrame, capital: float) -> float:
+    if daily.empty:
+        return 0.0
+    first = float(daily.iloc[0]["close"]); last = float(daily.iloc[-1]["close"])
+    if first <= 0:
+        return 0.0
+    return capital * ((last / first) - 1)
+
+
 def run(config_path: str = "config.yaml") -> None:
     logger = get_logger()
     cfg = ensure_timeframes(load_config(config_path))
@@ -76,6 +107,7 @@ def run(config_path: str = "config.yaml") -> None:
     journal_path=Path("data/trade_journal.csv")
 
     investor_trades=[]; swing_trades=[]
+    buy_hold_results = {}
 
     logger.info("Investor strategy exchange=%s capital=%s fees(maker/taker)=%.3f/%.3f", cfg['investor']['exchange'], cfg['investor']['capital'], cfg['investor']['maker_fee_pct'], cfg['investor']['taker_fee_pct'])
     logger.info("Swing strategy exchange=%s capital=%s fees(maker/taker)=%.3f/%.3f", cfg['swing']['exchange'], cfg['swing']['capital'], cfg['swing']['maker_fee_pct'], cfg['swing']['taker_fee_pct'])
@@ -114,3 +146,4 @@ def run(config_path: str = "config.yaml") -> None:
     _save_summary(reports/"investor_summary.json", reports/"investor_summary.csv", investor_stats)
     _save_summary(reports/"swing_summary.json", reports/"swing_summary.csv", swing_stats)
     _save_summary(reports/"combined_summary.json", reports/"combined_summary.csv", combined_stats)
+    (reports/"buy_and_hold_comparison.json").write_text(json.dumps(buy_hold_results, indent=2), encoding="utf-8")
