@@ -53,34 +53,53 @@ def _trade_marker_series(index: pd.Index, trade: Trade | None) -> tuple[pd.Serie
     return long_marker, short_marker, sl_marker, tp_marker
 
 
+def _clean_chart_df(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+    required = ["open", "high", "low", "close"]
+    if "timestamp" not in df.columns:
+        LOGGER.warning("Skipping chart generation for %s: missing timestamp column.", symbol)
+        return pd.DataFrame()
+    missing_required = [c for c in required if c not in df.columns]
+    if missing_required:
+        LOGGER.warning("Skipping chart generation for %s: missing required OHLC columns %s.", symbol, missing_required)
+        return pd.DataFrame()
+
+    chart_df = df.copy().tail(120)
+    if chart_df.empty:
+        return chart_df
+
+    chart_df["timestamp"] = pd.to_datetime(chart_df["timestamp"], utc=True, errors="coerce")
+    for col in ["open", "high", "low", "close", "volume"]:
+        if col in chart_df.columns:
+            chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
+
+    for col in ["ema_9", "ema_26", "ema_50", "vwap", "support", "resistance"]:
+        if col in chart_df.columns:
+            chart_df[col] = pd.to_numeric(chart_df[col], errors="coerce")
+
+    chart_df = chart_df.dropna(subset=["timestamp", "open", "high", "low", "close"])
+    chart_df = chart_df.sort_values("timestamp").set_index("timestamp")
+    return chart_df
+
+
 def _is_valid_series(chart_df: pd.DataFrame, column: str) -> bool:
     if column not in chart_df.columns:
         LOGGER.warning("Skipping plot column '%s': column not found.", column)
         return False
-    series = chart_df[column]
+    series = pd.to_numeric(chart_df[column], errors="coerce")
     if series.dropna().empty:
         LOGGER.warning("Skipping plot column '%s': series has no non-NaN values.", column)
         return False
     return True
 
 
-def plot_symbol_chart(
-    df: pd.DataFrame,
-    symbol: str,
-    output_path: str | Path,
-    trade: Trade | None = None,
-    confidence_score: int | None = None,
-) -> None:
+def plot_symbol_chart(df: pd.DataFrame, symbol: str, output_path: str | Path, trade: Trade | None = None, confidence_score: int | None = None) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    chart_df = df.copy().tail(120)
+    chart_df = _clean_chart_df(df, symbol)
     if chart_df.empty:
-        LOGGER.warning("Skipping chart generation for %s: chart dataframe is empty.", symbol)
+        LOGGER.warning("Skipping chart generation for %s: dataframe empty after cleaning.", symbol)
         return
-
-    chart_df = chart_df.set_index("timestamp")
-    chart_df.index = pd.DatetimeIndex(chart_df.index)
 
     addplots = []
     indicator_specs = [
@@ -94,7 +113,7 @@ def plot_symbol_chart(
 
     for column, kwargs in indicator_specs:
         if _is_valid_series(chart_df, column):
-            addplots.append(mpf.make_addplot(chart_df[column], **kwargs))
+            addplots.append(mpf.make_addplot(pd.to_numeric(chart_df[column], errors="coerce"), **kwargs))
 
     long_marker, short_marker, sl_marker, tp_marker = _trade_marker_series(chart_df.index, trade)
     if not long_marker.dropna().empty:
@@ -102,21 +121,12 @@ def plot_symbol_chart(
     if not short_marker.dropna().empty:
         addplots.append(mpf.make_addplot(short_marker, type="scatter", marker="v", markersize=100, color="crimson"))
     if not sl_marker.dropna().empty:
-        addplots.append(mpf.make_addplot(sl_marker, color="red", linestyle=":"))
+        addplots.append(mpf.make_addplot(pd.to_numeric(sl_marker, errors="coerce"), color="red", linestyle=":"))
     if not tp_marker.dropna().empty:
-        addplots.append(mpf.make_addplot(tp_marker, color="green", linestyle=":"))
+        addplots.append(mpf.make_addplot(pd.to_numeric(tp_marker, errors="coerce"), color="green", linestyle=":"))
 
     title = f"{symbol} | EMA9/26/50 + VWAP + S/R"
     if confidence_score is not None:
         title += f" | Confidence: {confidence_score}"
 
-    mpf.plot(
-        chart_df,
-        type="candle",
-        style="yahoo",
-        volume=True,
-        addplot=addplots if addplots else None,
-        title=title,
-        figsize=(14, 8),
-        savefig=dict(fname=str(output_path), dpi=120, bbox_inches="tight"),
-    )
+    mpf.plot(chart_df, type="candle", style="yahoo", volume=True, addplot=addplots if addplots else None, title=title, figsize=(14, 8), savefig=dict(fname=str(output_path), dpi=120, bbox_inches="tight"))

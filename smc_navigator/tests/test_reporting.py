@@ -52,3 +52,33 @@ def test_fee_stats_present() -> None:
     assert stats.total_fees_paid == 0.8
     assert stats.average_holding_candles == 3
     assert "ETH/EUR" in stats.pnl_by_symbol
+
+
+def test_plot_symbol_chart_handles_string_ohlc(monkeypatch, tmp_path) -> None:
+    import pytest
+
+    pd = pytest.importorskip("pandas")
+    charts = pytest.importorskip("smc_navigator.reporting.charts")
+
+    called = {"ok": False}
+
+    def fake_plot(*args, **kwargs):
+        called["ok"] = True
+
+    monkeypatch.setattr(charts.mpf, "plot", fake_plot)
+
+    df = pd.DataFrame(
+        {
+            "timestamp": ["2026-01-01T00:00:00Z", "2026-01-01T00:15:00Z", "2026-01-01T00:30:00Z"],
+            "open": ["100", "101", "bad"],
+            "high": ["101", "102", "103"],
+            "low": ["99", "100", "101"],
+            "close": ["100.5", "101.5", "102.5"],
+            "volume": ["1000", "1100", "1200"],
+            "ema_9": ["100", "101", "102"],
+            "ema_26": ["99", "100", "101"],
+        }
+    )
+
+    charts.plot_symbol_chart(df, "ETH/EUR", tmp_path / "string_ohlc.png", trade=None, confidence_score=50)
+    assert called["ok"] is True
