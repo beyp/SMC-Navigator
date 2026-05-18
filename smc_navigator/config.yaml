@@ -1,31 +1,34 @@
 exchange: kraken
 symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
-timeframe: "15m"
-starting_capital: 100
-risk_per_trade_pct: 1
-default_stop_loss_pct: 1.0
-default_take_profit_pct: 2.0
-max_open_trades: 1
+fees:
+  maker_fee_pct: 0.16
+  taker_fee_pct: 0.26
+  spread_pct: 0.05
 simulation_mode: true
 allow_real_orders: false
-maker_fee_pct: 0.16
-taker_fee_pct: 0.26
-spread_pct: 0.05
-min_confidence_score: 60
-enable_long_trades: true
-enable_short_trades: true
-min_rr_ratio: 1.2
-max_trades_per_symbol: 3
-cooldown_candles_after_trade: 3
-max_distance_from_vwap_pct: 1.0
-max_distance_from_ema26_pct: 1.0
-min_ema_distance_pct: 0.05
-min_atr_pct: 0.15
-min_range_width_pct: 0.2
-historical_limit_per_symbol: 1000
-backtest_since: "2025-01-01T00:00:00Z"
-backtest_until: null
-max_fetch_batches: 10
-minimum_setup_score: 60
-investor_capital: 50
-swing_capital: 50
+historical_fetch:
+  historical_limit_per_symbol: 1000
+  backtest_since: "2025-01-01T00:00:00Z"
+  backtest_until: null
+  max_fetch_batches: 10
+investor:
+  enabled: true
+  capital: 70
+  timeframes:
+    macro: "1M"
+    confirmation: "1w"
+    timing: "1d"
+  default_stop_loss_pct: 20
+  take_profit_targets_pct: [10, 25, 50, 100]
+  trailing_exit_enabled: true
+  max_position_months: 36
+swing:
+  enabled: true
+  capital: 30
+  timeframes:
+    context: "1w"
+    confirmation: "1d"
+    execution: "4h"
+  default_stop_loss_pct: 3
+  take_profit_targets_pct: [5, 10, 15]
+  max_position_days: 14

@@ -77,7 +77,7 @@ def build_trade_from_signal(config: dict, signal, reason_suffix: str = "") -> Tr
     entry = _apply_spread(signal.entry_price, signal.direction, sp, True)
     sl = _apply_spread(signal.suggested_stop_loss, signal.direction, sp, False)
     tp = _apply_spread(signal.suggested_take_profit, signal.direction, sp, False)
-    size, risk_amount = calculate_position_size(config["starting_capital"], config["risk_per_trade_pct"], entry, sl)
+    size, risk_amount = calculate_position_size(config.get("starting_capital", 100.0), config.get("risk_per_trade_pct", 1.0), entry, sl)
     rr = _rr_ratio(entry, sl, tp)
     reason = "; ".join(signal.reason) + (f"; {reason_suffix}" if reason_suffix else "")
     return Trade(str(uuid4()), signal.timestamp, config["exchange"], signal.symbol, config["timeframe"], signal.direction, entry, sl, tp, size, risk_amount, signal.confidence_score, "OPEN", None, None, None, 0.0, 0.0, 0.0, 0.0, 0, rr, reason, "|".join(signal.tags))
@@ -103,7 +103,7 @@ def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame
             cutoff = history.iloc[-1]["timestamp"]
             h4_hist = h4_df[h4_df["timestamp"] <= cutoff]
 
-        signal = evaluate_signal(symbol, history, config["default_stop_loss_pct"], config["default_take_profit_pct"], h1_close=h1_close, h1_ema50=h1_ema50, h1_df=h1_hist, h4_df=h4_hist)
+        signal = evaluate_signal(symbol, history, config.get("default_stop_loss_pct", 1.0), config.get("default_take_profit_pct", 2.0), h1_close=h1_close, h1_ema50=h1_ema50, h1_df=h1_hist, h4_df=h4_hist)
         if 40 <= signal.setup_score < int(config.get("minimum_setup_score", 0)) and watch_setups is not None:
             watch_setups.append({"symbol": symbol, "timestamp": str(signal.timestamp), "direction": signal.direction, "setup_score": signal.setup_score, "grade": signal.setup_grade, "missing_conditions": signal.missing_conditions})
         if signal.direction == "NONE":
