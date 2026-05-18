@@ -1,20 +1,21 @@
-exchange: kraken
-symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
-fees:
+shared:
+  simulation_mode: true
+  allow_real_orders: false
+  refresh_market_data: false
+  historical_fetch:
+    historical_limit_per_symbol: 1000
+    backtest_since: "2025-01-01T00:00:00Z"
+    backtest_until: null
+    max_fetch_batches: 10
+
+investor:
+  enabled: true
+  exchange: binance
+  capital: 70
+  symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
   maker_fee_pct: 0.16
   taker_fee_pct: 0.26
   spread_pct: 0.05
-simulation_mode: true
-allow_real_orders: false
-refresh_market_data: false
-historical_fetch:
-  historical_limit_per_symbol: 1000
-  backtest_since: "2025-01-01T00:00:00Z"
-  backtest_until: null
-  max_fetch_batches: 10
-investor:
-  enabled: true
-  capital: 70
   timeframes:
     macro: "1M"
     confirmation: "1w"
@@ -23,9 +24,15 @@ investor:
   take_profit_targets_pct: [10, 25, 50, 100]
   trailing_exit_enabled: true
   max_position_months: 36
+
 swing:
   enabled: true
+  exchange: kraken
   capital: 30
+  symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
+  maker_fee_pct: 0.16
+  taker_fee_pct: 0.26
+  spread_pct: 0.05
   timeframes:
     context: "1w"
     confirmation: "1d"
