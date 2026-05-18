@@ -6,6 +6,7 @@ fees:
   spread_pct: 0.05
 simulation_mode: true
 allow_real_orders: false
+refresh_market_data: false
 historical_fetch:
   historical_limit_per_symbol: 1000
   backtest_since: "2025-01-01T00:00:00Z"
