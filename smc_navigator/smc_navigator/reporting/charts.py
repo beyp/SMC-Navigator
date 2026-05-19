@@ -136,3 +136,36 @@ def plot_symbol_chart(df: pd.DataFrame, symbol: str, output_path: str | Path, tr
         title += f" | Confidence: {confidence_score}"
 
     mpf.plot(chart_df, type="candle", style="yahoo", volume=True, addplot=addplots if addplots else None, title=title, figsize=(14, 8), savefig=dict(fname=str(output_path), dpi=120, bbox_inches="tight"))
+
+
+def plot_yearly_equity_curve(trades: list[Trade], output_path: str | Path) -> None:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not trades:
+        return
+    df = pd.DataFrame({"timestamp": [t.timestamp for t in trades], "pnl": [float(t.pnl or 0.0) for t in trades]})
+    df["year"] = pd.to_datetime(df["timestamp"]).dt.year.astype(str)
+    grouped = df.groupby("year")["pnl"].sum().cumsum()
+    plt.figure(figsize=(10,4)); grouped.plot(marker='o'); plt.title("Yearly Equity Curve"); plt.grid(True, alpha=0.3); plt.tight_layout(); plt.savefig(output_path); plt.close()
+
+
+def plot_rolling_drawdown(trades: list[Trade], output_path: str | Path) -> None:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not trades:
+        return
+    eq=[]; total=0.0
+    for t in trades:
+        total += float(t.pnl or 0.0); eq.append(total)
+    s = pd.Series(eq)
+    rolling_max = s.cummax()
+    dd = rolling_max - s
+    plt.figure(figsize=(10,4)); dd.plot(color='red'); plt.title('Rolling Drawdown'); plt.grid(True, alpha=0.3); plt.tight_layout(); plt.savefig(output_path); plt.close()
+
+
+def plot_regime_performance(perf_by_regime: dict[str, float], output_path: str | Path) -> None:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not perf_by_regime:
+        return
+    plt.figure(figsize=(8,4)); plt.bar(list(perf_by_regime.keys()), list(perf_by_regime.values())); plt.title('Regime Performance'); plt.tight_layout(); plt.savefig(output_path); plt.close()

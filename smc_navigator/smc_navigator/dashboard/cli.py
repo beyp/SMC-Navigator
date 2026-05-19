@@ -12,7 +12,7 @@ from smc_navigator.exchanges.binance import BinanceExchange
 from smc_navigator.exchanges.kraken import KrakenExchange
 from smc_navigator.market_data.candles import fetch_candles_df
 from smc_navigator.market_data.indicators import add_indicators
-from smc_navigator.reporting.charts import plot_equity_curve, plot_symbol_chart
+from smc_navigator.reporting.charts import plot_equity_curve, plot_symbol_chart, plot_yearly_equity_curve, plot_rolling_drawdown, plot_regime_performance
 from smc_navigator.reporting.stats import compute_trade_stats
 from smc_navigator.simulator.engine import run_backtest_for_symbol
 from smc_navigator.simulator.trade import Trade
@@ -113,9 +113,16 @@ def run(config_path: str = "config.yaml") -> None:
     logger.info("Swing strategy exchange=%s capital=%s fees(maker/taker)=%.3f/%.3f", cfg['swing']['exchange'], cfg['swing']['capital'], cfg['swing']['maker_fee_pct'], cfg['swing']['taker_fee_pct'])
 
     for symbol in cfg["investor"]["symbols"]:
+        # larger historical windows for investor cycle testing
+        shared_hist = shared["historical_fetch"]
+        original_limit = shared_hist["historical_limit_per_symbol"]
+        shared_hist["historical_limit_per_symbol"] = max(original_limit, 240)
         m1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['macro'])
+        shared_hist["historical_limit_per_symbol"] = max(original_limit, 300)
         w1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['confirmation'])
+        shared_hist["historical_limit_per_symbol"] = max(original_limit, 1100)
         d1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['timing'])
+        shared_hist["historical_limit_per_symbol"] = original_limit
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange']))
         plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60)
@@ -146,4 +153,17 @@ def run(config_path: str = "config.yaml") -> None:
     _save_summary(reports/"investor_summary.json", reports/"investor_summary.csv", investor_stats)
     _save_summary(reports/"swing_summary.json", reports/"swing_summary.csv", swing_stats)
     _save_summary(reports/"combined_summary.json", reports/"combined_summary.csv", combined_stats)
+
+    plot_yearly_equity_curve(investor_trades, reports/"yearly_equity_curve_investor.png")
+    plot_yearly_equity_curve(swing_trades, reports/"yearly_equity_curve_swing.png")
+    plot_rolling_drawdown(investor_trades, reports/"rolling_drawdown_investor.png")
+    plot_rolling_drawdown(swing_trades, reports/"rolling_drawdown_swing.png")
+    plot_regime_performance(investor_stats.performance_by_regime, reports/"regime_performance_investor.png")
+
+    benchmark = {
+        "buy_and_hold": _buy_hold_return(d1, float(cfg["investor"]["capital"])) if "d1" in locals() and not d1.empty else 0.0,
+        "investor_engine": investor_stats.net_pnl_after_fees,
+        "swing_engine": swing_stats.net_pnl_after_fees,
+    }
+    (reports/"benchmark_comparison.json").write_text(json.dumps(benchmark, indent=2), encoding="utf-8")
     (reports/"buy_and_hold_comparison.json").write_text(json.dumps(buy_hold_results, indent=2), encoding="utf-8")
