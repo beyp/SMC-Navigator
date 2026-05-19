@@ -1,10 +1,13 @@
 from pathlib import Path
 import time
+import logging
 
 import ccxt
 import pandas as pd
 
 from smc_navigator.exchanges.base import BaseExchange
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _cache_path(exchange_name: str, symbol: str, timeframe: str) -> Path:
@@ -35,6 +38,20 @@ def _fetch_with_retry(
     return []
 
 
+def _resample_to_monthly(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    daily = df.copy().set_index("timestamp").sort_index()
+    monthly = daily.resample("MS").agg({
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+    }).dropna(subset=["open", "high", "low", "close"]).reset_index()
+    return monthly
+
+
 def fetch_candles_df(
     exchange: BaseExchange,
     symbol: str,
@@ -49,6 +66,13 @@ def fetch_candles_df(
     retry_backoff_seconds: float = 1.0,
 ) -> tuple[pd.DataFrame, str]:
     ex_name = exchange.__class__.__name__.replace("Exchange", "").lower()
+    effective_timeframe = timeframe
+    resample_to_monthly = False
+    if ex_name == "kraken" and timeframe == "1M":
+        LOGGER.info("Kraken does not support 1M directly; resampling 1d to 1M")
+        effective_timeframe = "1d"
+        resample_to_monthly = True
+
     cache_file = _cache_path(ex_name, symbol, timeframe)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -64,7 +88,6 @@ def fetch_candles_df(
     since_ts = pd.Timestamp(since) if since else None
     since_ms = int(since_ts.timestamp() * 1000) if since_ts is not None else None
 
-    # Reuse cache first; if refresh disabled and cache exists, skip API fetch entirely.
     if not refresh_market_data and not cached_df.empty:
         merged = cached_df.copy()
         if since:
@@ -81,7 +104,7 @@ def fetch_candles_df(
             since_ms = last_cached_ms
 
     raw = _fetch_with_retry(
-        exchange, symbol, timeframe, limit, since_ms, max_fetch_batches,
+        exchange, symbol, effective_timeframe, limit, since_ms, max_fetch_batches,
         request_delay_seconds=request_delay_seconds,
         max_retries=max_retries,
         retry_backoff_seconds=retry_backoff_seconds,
@@ -89,6 +112,8 @@ def fetch_candles_df(
     fresh_df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
     if not fresh_df.empty:
         fresh_df["timestamp"] = pd.to_datetime(fresh_df["timestamp"], unit="ms", utc=True)
+    if resample_to_monthly:
+        fresh_df = _resample_to_monthly(fresh_df)
 
     if cached_df.empty and fresh_df.empty:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"]), "none"
