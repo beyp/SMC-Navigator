@@ -1,12 +1,15 @@
 shared:
   simulation_mode: true
   allow_real_orders: false
-  refresh_market_data: false
   historical_fetch:
+    refresh_market_data: false
     historical_limit_per_symbol: 1000
     backtest_since: "2025-01-01T00:00:00Z"
     backtest_until: null
     max_fetch_batches: 10
+    request_delay_seconds: 2
+    max_retries: 5
+    retry_backoff_seconds: 5
 
 investor:
   enabled: true
@@ -33,6 +36,7 @@ swing:
   maker_fee_pct: 0.16
   taker_fee_pct: 0.26
   spread_pct: 0.05
+  use_m5_confirmation: false
   timeframes:
     context: "1w"
     confirmation: "1d"

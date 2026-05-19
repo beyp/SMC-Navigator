@@ -34,7 +34,10 @@ def _fetch(ex, shared, symbol, timeframe):
         since=hist.get("backtest_since"),
         until=hist.get("backtest_until"),
         max_fetch_batches=hist.get("max_fetch_batches", 1),
-        refresh_market_data=shared.get("refresh_market_data", False),
+        refresh_market_data=shared["historical_fetch"].get("refresh_market_data", False),
+        request_delay_seconds=hist.get("request_delay_seconds", 0),
+        max_retries=hist.get("max_retries", 0),
+        retry_backoff_seconds=hist.get("retry_backoff_seconds", 1),
     )
 
 
@@ -117,23 +120,27 @@ def run(config_path: str = "config.yaml") -> None:
         shared_hist = shared["historical_fetch"]
         original_limit = shared_hist["historical_limit_per_symbol"]
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 240)
-        m1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['macro'])
+        m1,m1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['macro'])
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 300)
-        w1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['confirmation'])
+        w1,w1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['confirmation'])
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 1100)
-        d1,_=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['timing'])
+        d1,d1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['timing'])
         shared_hist["historical_limit_per_symbol"] = original_limit
+        logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange']))
         plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60)
 
     for symbol in cfg["swing"]["symbols"]:
-        h4,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution'])
-        d1,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation'])
-        w1,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context'])
-        h1,_=_fetch(sw_ex,shared,symbol,"1h")
-        m15,_=_fetch(sw_ex,shared,symbol,"15m")
-        m5,_=_fetch(sw_ex,shared,symbol,"5m")
+        h4,h4_src=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution'])
+        d1,d1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation'])
+        w1,w1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context'])
+        h1,h1_src=_fetch(sw_ex,shared,symbol,"1h")
+        m15,m15_src=_fetch(sw_ex,shared,symbol,"15m")
+        m5,m5_src = (pd.DataFrame(), "skipped")
+        if cfg["swing"].get("use_m5_confirmation", False):
+            m5,m5_src=_fetch(sw_ex,shared,symbol,"5m")
+        logger.info("%s swing data source: h4=%s d1=%s w1=%s h1=%s m15=%s m5=%s", symbol, h4_src, d1_src2, w1_src2, h1_src, m15_src, m5_src)
         if h4.empty: continue
         h4i=add_indicators(h4)
         h1i=add_indicators(h1) if not h1.empty else h1
