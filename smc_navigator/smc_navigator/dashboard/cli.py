@@ -106,6 +106,10 @@ def run(config_path: str = "config.yaml") -> None:
 
     inv_ex = _build_exchange(cfg["investor"]["exchange"])
     sw_ex = _build_exchange(cfg["swing"]["exchange"])
+    logger.info("Investor exchange=%s", cfg["investor"]["exchange"])
+    logger.info("Investor timeframes=%s", cfg["investor"]["timeframes"])
+    logger.info("Swing exchange=%s", cfg["swing"]["exchange"])
+    logger.info("Swing timeframes=%s", cfg["swing"]["timeframes"])
     reports=Path("reports"); charts=reports/"charts"; charts.mkdir(parents=True, exist_ok=True)
     journal_path=Path("data/trade_journal.csv")
 

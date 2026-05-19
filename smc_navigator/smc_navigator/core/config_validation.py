@@ -1,20 +1,32 @@
+def _require(cfg: dict, path: str):
+    cur = cfg
+    for part in path.split('.'):
+        if not isinstance(cur, dict) or part not in cur:
+            raise ValueError(f"Missing config: {path}")
+        cur = cur[part]
+    if cur is None:
+        raise ValueError(f"Missing config: {path}")
+    return cur
+
+
 def ensure_timeframes(cfg: dict) -> dict:
     cfg = dict(cfg)
-    inv = cfg["investor"]
-    sw = cfg["swing"]
-    inv_tf = inv.setdefault("timeframes", {})
-    sw_tf = sw.setdefault("timeframes", {})
-    inv_tf.setdefault("macro", "1M")
-    inv_tf.setdefault("confirmation", "1w")
-    inv_tf.setdefault("timing", "1d")
-    sw_tf.setdefault("context", "1w")
-    sw_tf.setdefault("confirmation", "1d")
-    sw_tf.setdefault("execution", "4h")
+
+    _require(cfg, "investor.exchange")
+    _require(cfg, "swing.exchange")
+    _require(cfg, "investor.symbols")
+    _require(cfg, "swing.symbols")
+    _require(cfg, "investor.maker_fee_pct")
+    _require(cfg, "investor.taker_fee_pct")
+    _require(cfg, "swing.maker_fee_pct")
+    _require(cfg, "swing.taker_fee_pct")
+
+    _require(cfg, "investor.timeframes")
+    _require(cfg, "swing.timeframes")
 
     for key in ["macro", "confirmation", "timing"]:
-        if not inv_tf.get(key):
-            raise ValueError(f"Missing required timeframe: investor.timeframes.{key}")
+        _require(cfg, f"investor.timeframes.{key}")
     for key in ["context", "confirmation", "execution"]:
-        if not sw_tf.get(key):
-            raise ValueError(f"Missing required timeframe: swing.timeframes.{key}")
+        _require(cfg, f"swing.timeframes.{key}")
+
     return cfg
