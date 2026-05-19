@@ -131,12 +131,18 @@ def run(config_path: str = "config.yaml") -> None:
         h4,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution'])
         d1,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation'])
         w1,_=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context'])
+        h1,_=_fetch(sw_ex,shared,symbol,"1h")
+        m15,_=_fetch(sw_ex,shared,symbol,"15m")
+        m5,_=_fetch(sw_ex,shared,symbol,"5m")
         if h4.empty: continue
         h4i=add_indicators(h4)
-        h1,_=_fetch(sw_ex,shared,symbol,"1h")
-        swing_sig=evaluate_swing_signal(w1,d1,h4)
+        h1i=add_indicators(h1) if not h1.empty else h1
+        m15i=add_indicators(m15) if not m15.empty else m15
+        m5i=add_indicators(m5) if not m5.empty else m5
+        swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None)
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
-        t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=add_indicators(h1) if not h1.empty else None,h4_df=h4i)
+        logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
+        t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
         swing_trades.extend(t)
         plot_symbol_chart(h4i, f"{symbol}_SWING", charts/f"{symbol.replace('/','_')}_swing.png", trade=t[-1] if t else None, confidence_score=swing_sig.score)
 
