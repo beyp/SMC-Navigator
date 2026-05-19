@@ -107,14 +107,29 @@ def run(config_path: str = "config.yaml") -> None:
     if not shared.get("simulation_mode", True) or shared.get("allow_real_orders", False):
         raise RuntimeError("Safety check failed: only simulation_mode=true and allow_real_orders=false are supported")
 
+
+    inv_tf = cfg["investor"].get("timeframes", {})
+    sw_tf = cfg["swing"].get("timeframes", {})
+    if inv_tf.get("macro") is None:
+        raise ValueError("Missing config: investor.timeframes.macro")
+    if inv_tf.get("confirmation") is None:
+        raise ValueError("Missing config: investor.timeframes.confirmation")
+    if inv_tf.get("timing") is None:
+        raise ValueError("Missing config: investor.timeframes.timing")
+    if sw_tf.get("context") is None:
+        raise ValueError("Missing config: swing.timeframes.context")
+    if sw_tf.get("confirmation") is None:
+        raise ValueError("Missing config: swing.timeframes.confirmation")
+    if sw_tf.get("execution") is None:
+        raise ValueError("Missing config: swing.timeframes.execution")
     inv_ex = _build_exchange(cfg["investor"]["exchange"])
     sw_ex = _build_exchange(cfg["swing"]["exchange"])
     logger.info("Investor exchange=%s", cfg["investor"]["exchange"])
     for name, enabled in features.items():
         logger.info("%s: %s", name.replace("_", " ").title(), "ENABLED" if enabled else "DISABLED")
-    logger.info("Investor timeframes=%s", cfg["investor"]["timeframes"])
+    logger.info("Investor timeframes: macro=%s confirmation=%s timing=%s", inv_tf["macro"], inv_tf["confirmation"], inv_tf["timing"])
     logger.info("Swing exchange=%s", cfg["swing"]["exchange"])
-    logger.info("Swing timeframes=%s", cfg["swing"]["timeframes"])
+    logger.info("Swing timeframes: context=%s confirmation=%s execution=%s", sw_tf["context"], sw_tf["confirmation"], sw_tf["execution"])
     reports=Path("reports"); charts=reports/"charts"; charts.mkdir(parents=True, exist_ok=True)
     journal_path=Path("data/trade_journal.csv")
 
