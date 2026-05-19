@@ -55,17 +55,23 @@ def _trade_marker_series(index: pd.Index, trade: Trade | None) -> tuple[pd.Serie
 
 def _clean_chart_df(df: pd.DataFrame, symbol: str) -> pd.DataFrame:
     required = ["open", "high", "low", "close"]
-    if "timestamp" not in df.columns:
-        LOGGER.warning("Skipping chart generation for %s: missing timestamp column.", symbol)
-        return pd.DataFrame()
-    missing_required = [c for c in required if c not in df.columns]
-    if missing_required:
-        LOGGER.warning("Skipping chart generation for %s: missing required OHLC columns %s.", symbol, missing_required)
-        return pd.DataFrame()
 
     chart_df = df.copy().tail(120)
     if chart_df.empty:
         return chart_df
+
+    if "timestamp" not in chart_df.columns:
+        # allow timestamp to come from index (common after cache reload transformations)
+        if isinstance(chart_df.index, pd.DatetimeIndex) or chart_df.index.name == "timestamp":
+            chart_df = chart_df.reset_index().rename(columns={chart_df.columns[0]: "timestamp"})
+        else:
+            LOGGER.warning("Skipping chart generation for %s: missing timestamp column.", symbol)
+            return pd.DataFrame()
+
+    missing_required = [c for c in required if c not in chart_df.columns]
+    if missing_required:
+        LOGGER.warning("Skipping chart generation for %s: missing required OHLC columns %s.", symbol, missing_required)
+        return pd.DataFrame()
 
     chart_df["timestamp"] = pd.to_datetime(chart_df["timestamp"], utc=True, errors="coerce")
     for col in ["open", "high", "low", "close", "volume"]:
