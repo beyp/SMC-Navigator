@@ -13,7 +13,7 @@ shared:
 
 investor:
   enabled: true
-  exchange: binance
+  exchange: kraken
   capital: 70
   symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
   maker_fee_pct: 0.16
@@ -30,11 +30,11 @@ investor:
 
 swing:
   enabled: true
-  exchange: kraken
+  exchange: binance
   capital: 30
   symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
-  maker_fee_pct: 0.16
-  taker_fee_pct: 0.26
+  maker_fee_pct: 0.075
+  taker_fee_pct: 0.075
   spread_pct: 0.05
   use_m5_confirmation: false
   timeframes:
