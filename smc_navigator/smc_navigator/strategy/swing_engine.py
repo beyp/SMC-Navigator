@@ -34,20 +34,23 @@ def _pullback_levels(low: float, high: float) -> tuple[float, float, float]:
     return high - span * 0.30, high - span * 0.50, high - span * 0.618
 
 
-def evaluate_swing_signal(weekly: pd.DataFrame, daily: pd.DataFrame, h4: pd.DataFrame, h1: pd.DataFrame | None = None, m15: pd.DataFrame | None = None, m5: pd.DataFrame | None = None) -> SwingSignal:
+def evaluate_swing_signal(weekly: pd.DataFrame, daily: pd.DataFrame, h4: pd.DataFrame, h1: pd.DataFrame | None = None, m15: pd.DataFrame | None = None, m5: pd.DataFrame | None = None, features: dict | None = None) -> SwingSignal:
     if weekly.empty or daily.empty or h4.empty:
         return SwingSignal("HOLD", 0, ["insufficient_data"], [])
     h1 = h1 if h1 is not None and not h1.empty else daily
     m15 = m15 if m15 is not None and not m15.empty else h1
     m5 = m5 if m5 is not None and not m5.empty else m15
 
-    probs = evaluate_predictive_probabilities(h4, h1)
+    probs = evaluate_predictive_probabilities(h4, h1, features=features)
+    features = features or {}
     h1_bos, bos_high, bos_low = _h1_bos(h1)
+    if not features.get("bos_pullback_logic", True):
+        h1_bos = True
     pb30, pb50, pb618 = _pullback_levels(bos_low, bos_high)
     px = float(m15.iloc[-1]["close"])
     in_pullback = pb618 <= px <= pb30
-    m15_reclaim = float(m15.iloc[-1]["close"]) > float(m15.iloc[-2]["high"])
-    m5_reclaim = float(m5.iloc[-1]["close"]) > float(m5.iloc[-2]["high"])
+    m15_reclaim = True if not features.get("reclaim_confirmation", True) else float(m15.iloc[-1]["close"]) > float(m15.iloc[-2]["high"])
+    m5_reclaim = True if not features.get("m5_execution", False) else float(m5.iloc[-1]["close"]) > float(m5.iloc[-2]["high"])
 
     score = int(round((probs.reversal_probability * 0.4 + probs.continuation_probability * 0.6) * 100))
     reasons: list[str] = []

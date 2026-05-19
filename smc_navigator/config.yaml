@@ -44,3 +44,28 @@ swing:
   default_stop_loss_pct: 3
   take_profit_targets_pct: [5, 10, 15]
   max_position_days: 14
+
+features:
+  predictive_engine:
+    enabled: true
+
+  bos_pullback_logic:
+    enabled: true
+
+  reclaim_confirmation:
+    enabled: true
+
+  sweep_detection:
+    enabled: true
+
+  compression_detection:
+    enabled: true
+
+  m5_execution:
+    enabled: false
+
+  volume_confirmation:
+    enabled: false
+
+  investor_regime_filter:
+    enabled: true

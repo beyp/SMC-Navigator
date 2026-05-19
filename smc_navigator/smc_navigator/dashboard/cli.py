@@ -45,17 +45,18 @@ def _save_trades_csv(path: Path, trades: list[Trade]) -> None:
     pd.DataFrame([asdict(t) for t in trades]).to_csv(path, index=False)
 
 
-def _save_summary(path_json: Path, path_csv: Path, stats) -> None:
+def _save_summary(path_json: Path, path_csv: Path, stats, enabled_features: dict[str, bool] | None = None) -> None:
     payload = asdict(stats)
+    payload["enabled_features"] = enabled_features or {}
     path_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     pd.DataFrame({"metric": list(payload.keys()), "value": [json.dumps(v) if isinstance(v, dict) else v for v in payload.values()]}).to_csv(path_csv, index=False)
 
 
-def _simulate_investor_trades(symbol: str, daily: pd.DataFrame, weekly: pd.DataFrame, monthly: pd.DataFrame, capital: float, exchange: str) -> list[Trade]:
+def _simulate_investor_trades(symbol: str, daily: pd.DataFrame, weekly: pd.DataFrame, monthly: pd.DataFrame, capital: float, exchange: str, features: dict[str, bool] | None = None) -> list[Trade]:
     trades=[]; open_trade=None
     for i in range(60, len(daily)):
         d_hist=daily.iloc[:i+1]; cutoff=d_hist.iloc[-1]["timestamp"]
-        sig=evaluate_investor_signal(monthly[monthly["timestamp"]<=cutoff], weekly[weekly["timestamp"]<=cutoff], d_hist)
+        sig=evaluate_investor_signal(monthly[monthly["timestamp"]<=cutoff], weekly[weekly["timestamp"]<=cutoff], d_hist, features=features)
         price=float(d_hist.iloc[-1]["close"])
         if sig.signal=="INVEST_LONG" and open_trade is None:
             size=(capital*0.5)/max(price,1e-9)
@@ -101,12 +102,16 @@ def run(config_path: str = "config.yaml") -> None:
     logger = get_logger()
     cfg = ensure_timeframes(load_config(config_path))
     shared = cfg["shared"]
+    raw_features = cfg.get("features", {})
+    features = {k: bool(v.get("enabled", False)) for k, v in raw_features.items() if isinstance(v, dict)}
     if not shared.get("simulation_mode", True) or shared.get("allow_real_orders", False):
         raise RuntimeError("Safety check failed: only simulation_mode=true and allow_real_orders=false are supported")
 
     inv_ex = _build_exchange(cfg["investor"]["exchange"])
     sw_ex = _build_exchange(cfg["swing"]["exchange"])
     logger.info("Investor exchange=%s", cfg["investor"]["exchange"])
+    for name, enabled in features.items():
+        logger.info("%s: %s", name.replace("_", " ").title(), "ENABLED" if enabled else "DISABLED")
     logger.info("Investor timeframes=%s", cfg["investor"]["timeframes"])
     logger.info("Swing exchange=%s", cfg["swing"]["exchange"])
     logger.info("Swing timeframes=%s", cfg["swing"]["timeframes"])
@@ -132,7 +137,7 @@ def run(config_path: str = "config.yaml") -> None:
         shared_hist["historical_limit_per_symbol"] = original_limit
         logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
-        investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange']))
+        investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange'],features))
         plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60)
 
     for symbol in cfg["swing"]["symbols"]:
@@ -142,7 +147,7 @@ def run(config_path: str = "config.yaml") -> None:
         h1,h1_src=_fetch(sw_ex,shared,symbol,"1h")
         m15,m15_src=_fetch(sw_ex,shared,symbol,"15m")
         m5,m5_src = (pd.DataFrame(), "skipped")
-        if cfg["swing"].get("use_m5_confirmation", False):
+        if cfg["swing"].get("use_m5_confirmation", False) and features.get("m5_execution", False):
             m5,m5_src=_fetch(sw_ex,shared,symbol,"5m")
         logger.info("%s swing data source: h4=%s d1=%s w1=%s h1=%s m15=%s m5=%s", symbol, h4_src, d1_src2, w1_src2, h1_src, m15_src, m5_src)
         if h4.empty: continue
@@ -150,7 +155,7 @@ def run(config_path: str = "config.yaml") -> None:
         h1i=add_indicators(h1) if not h1.empty else h1
         m15i=add_indicators(m15) if not m15.empty else m15
         m5i=add_indicators(m5) if not m5.empty else m5
-        swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None)
+        swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features)
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
         t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
@@ -167,9 +172,9 @@ def run(config_path: str = "config.yaml") -> None:
 
     _save_trades_csv(reports/"investor_trades_report.csv", investor_trades)
     _save_trades_csv(reports/"swing_trades_report.csv", swing_trades)
-    _save_summary(reports/"investor_summary.json", reports/"investor_summary.csv", investor_stats)
-    _save_summary(reports/"swing_summary.json", reports/"swing_summary.csv", swing_stats)
-    _save_summary(reports/"combined_summary.json", reports/"combined_summary.csv", combined_stats)
+    _save_summary(reports/"investor_summary.json", reports/"investor_summary.csv", investor_stats, features)
+    _save_summary(reports/"swing_summary.json", reports/"swing_summary.csv", swing_stats, features)
+    _save_summary(reports/"combined_summary.json", reports/"combined_summary.csv", combined_stats, features)
 
     plot_yearly_equity_curve(investor_trades, reports/"yearly_equity_curve_investor.png")
     plot_yearly_equity_curve(swing_trades, reports/"yearly_equity_curve_swing.png")

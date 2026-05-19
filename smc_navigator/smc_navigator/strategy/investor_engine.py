@@ -17,11 +17,11 @@ class InvestorSignal:
     tags: list[str] | None = None
 
 
-def evaluate_investor_signal(monthly: pd.DataFrame, weekly: pd.DataFrame, daily: pd.DataFrame) -> InvestorSignal:
+def evaluate_investor_signal(monthly: pd.DataFrame, weekly: pd.DataFrame, daily: pd.DataFrame, features: dict | None = None) -> InvestorSignal:
     if monthly.empty or weekly.empty or daily.empty:
         return InvestorSignal("HOLD", 0, ["insufficient_data"], "compression", tags=[])
 
-    probs = evaluate_predictive_probabilities(monthly, weekly)
+    probs = evaluate_predictive_probabilities(monthly, weekly, features=features)
     reasons: list[str] = []
     score = int(round((probs.reversal_probability * 0.55 + probs.continuation_probability * 0.45) * 100))
 
@@ -32,7 +32,7 @@ def evaluate_investor_signal(monthly: pd.DataFrame, weekly: pd.DataFrame, daily:
     if probs.exhaustion_probability > 0.65:
         reasons.append("trend_exhaustion_risk")
 
-    if probs.reversal_probability > 0.64 and probs.exhaustion_probability < 0.68:
+    if (features or {}).get("investor_regime_filter", True) and probs.reversal_probability > 0.64 and probs.exhaustion_probability < 0.68:
         return InvestorSignal("INVEST_LONG", score, reasons, "bullish_probabilistic", probs.reversal_probability, probs.continuation_probability, probs.exhaustion_probability, probs.tags)
 
     if probs.exhaustion_probability > 0.70 and probs.continuation_probability < 0.45:
