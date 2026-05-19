@@ -169,3 +169,23 @@ def plot_regime_performance(perf_by_regime: dict[str, float], output_path: str |
     if not perf_by_regime:
         return
     plt.figure(figsize=(8,4)); plt.bar(list(perf_by_regime.keys()), list(perf_by_regime.values())); plt.title('Regime Performance'); plt.tight_layout(); plt.savefig(output_path); plt.close()
+
+
+def plot_reversal_probability_heatmap(df: pd.DataFrame, output_path: str | Path, probability_col: str = "reversal_probability") -> None:
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if df.empty or probability_col not in df.columns:
+        return
+    hdf = df.copy().tail(200)
+    hdf["timestamp"] = pd.to_datetime(hdf["timestamp"], errors="coerce")
+    hdf = hdf.dropna(subset=["timestamp", probability_col])
+    if hdf.empty:
+        return
+    plt.figure(figsize=(12, 2.8))
+    plt.scatter(hdf["timestamp"], [1] * len(hdf), c=hdf[probability_col], cmap="RdYlGn", vmin=0, vmax=1, s=30)
+    plt.colorbar(label="Reversal Probability")
+    plt.yticks([])
+    plt.title("Reversal Probability Heatmap")
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()

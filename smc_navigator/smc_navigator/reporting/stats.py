@@ -32,6 +32,9 @@ class TradeStats:
     ulcer_index: float
     recovery_factor: float
     yearly_returns: dict[str, float]
+    winrate_by_score_bucket: dict[str, float]
+    reversal_probability_analysis: dict[str, float]
+    continuation_probability_analysis: dict[str, float]
 
 
 def compute_trade_stats(trades: list[Trade], initial_capital: float = 100.0) -> TradeStats:
@@ -54,6 +57,7 @@ def compute_trade_stats(trades: list[Trade], initial_capital: float = 100.0) -> 
 
     hold = sum(t.holding_candles for t in trades) / total_trades if total_trades else 0.0
     by_symbol, by_dir, by_tag, by_month, by_regime, by_year = {}, {"LONG": 0.0, "SHORT": 0.0}, {}, {}, {}, {}
+    score_buckets = {"0-39": [], "40-59": [], "60-79": [], "80-100": []}
 
     sorted_trades = sorted(trades, key=lambda t: t.timestamp)
     for t in sorted_trades:
@@ -72,7 +76,12 @@ def compute_trade_stats(trades: list[Trade], initial_capital: float = 100.0) -> 
         year = pd.Timestamp(t.timestamp).strftime("%Y")
         by_month[month] = by_month.get(month, 0.0) + pnl
         by_year[year] = by_year.get(year, 0.0) + pnl
-        regime = "trend" if "trend_continuation" in (t.tags or "") else "range"
+        regime = "trend" if "continuation" in (t.reason or "") else "range"
+        s = int(t.confidence_score or 0)
+        if s < 40: score_buckets["0-39"].append(pnl)
+        elif s < 60: score_buckets["40-59"].append(pnl)
+        elif s < 80: score_buckets["60-79"].append(pnl)
+        else: score_buckets["80-100"].append(pnl)
         by_regime[regime] = by_regime.get(regime, 0.0) + pnl
         for tag in [x.strip() for x in (t.tags or "").split("|") if x.strip()]:
             by_tag[tag] = by_tag.get(tag, 0.0) + pnl
@@ -85,7 +94,10 @@ def compute_trade_stats(trades: list[Trade], initial_capital: float = 100.0) -> 
     ulcer_index = (pd.Series(drawdowns_pct).pow(2).mean() ** 0.5) if drawdowns_pct else 0.0
     recovery_factor = (net / mdd) if mdd > 0 else 0.0
 
-    return TradeStats(total_trades, wins, losses, winrate, gross_profit, gross_loss, net, fees, avg, pf, avg, mdd, hold, by_symbol, by_dir, by_tag, by_month, by_regime, cagr, float(sharpe), float(ulcer_index), float(recovery_factor), by_year)
+    winrate_by_score = {k: (sum(1 for x in v if x > 0) / len(v) * 100) if v else 0.0 for k, v in score_buckets.items()}
+    rev_analysis = {"high_score_net_pnl": sum(score_buckets["80-100"]), "low_score_net_pnl": sum(score_buckets["0-39"])}
+    cont_analysis = {"mid_high_score_net_pnl": sum(score_buckets["60-79"]) + sum(score_buckets["80-100"]), "mid_low_score_net_pnl": sum(score_buckets["0-39"]) + sum(score_buckets["40-59"])}
+    return TradeStats(total_trades, wins, losses, winrate, gross_profit, gross_loss, net, fees, avg, pf, avg, mdd, hold, by_symbol, by_dir, by_tag, by_month, by_regime, cagr, float(sharpe), float(ulcer_index), float(recovery_factor), by_year, winrate_by_score, rev_analysis, cont_analysis)
 
 
 def save_backtest_summary(stats: TradeStats, reports_dir: str | Path) -> None:
