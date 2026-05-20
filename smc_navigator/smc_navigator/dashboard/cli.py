@@ -157,6 +157,7 @@ def run(config_path: str = "config.yaml") -> None:
     logger.info("Swing exchange=%s", cfg["swing"]["exchange"])
     logger.info("Swing timeframes: context=%s confirmation=%s execution=%s", sw_tf["context"], sw_tf["confirmation"], sw_tf["execution"])
     reports=Path("reports"); charts=reports/"charts"; charts.mkdir(parents=True, exist_ok=True)
+    detailed_visuals = bool(cfg.get("charts", {}).get("detailed_visuals", False))
     journal_path=Path("data/trade_journal.csv")
 
     investor_trades=[]; swing_trades=[]
@@ -183,7 +184,7 @@ def run(config_path: str = "config.yaml") -> None:
         logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange'],features))
-        plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60)
+        plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60, overlays={"regime": "investor_htf_zone", "score_breakdown": "rev/cont/exh", "hold_reasons": ["no_reclaim", "weak_bos", "no_confirmation"]}, detailed_visuals=detailed_visuals)
 
     for i_symbol, symbol in enumerate(_select_symbols(cfg["swing"]["symbols"], debug_symbol), start=1):
         total_symbols = len(_select_symbols(cfg["swing"]["symbols"], debug_symbol))
@@ -218,7 +219,7 @@ def run(config_path: str = "config.yaml") -> None:
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
         t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
         swing_trades.extend(t)
-        plot_symbol_chart(h4i, f"{symbol}_SWING", charts/f"{symbol.replace('/','_')}_swing.png", trade=t[-1] if t else None, confidence_score=swing_sig.score)
+        plot_symbol_chart(h4i, f"{symbol}_SWING", charts/f"{symbol.replace('/','_')}_swing.png", trade=t[-1] if t else None, confidence_score=swing_sig.score, overlays={"regime": "swing_htf_zone", "score_breakdown": f"rev={swing_sig.reversal_probability:.2f}|cont={swing_sig.continuation_probability:.2f}|exh={swing_sig.exhaustion_probability:.2f}", "hold_reasons": swing_sig.reasons if swing_sig.signal=="HOLD" else []}, detailed_visuals=detailed_visuals)
 
     investor_stats=compute_trade_stats(investor_trades)
     swing_stats=compute_trade_stats(swing_trades)
