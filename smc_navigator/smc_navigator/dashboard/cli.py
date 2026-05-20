@@ -118,18 +118,24 @@ def run(config_path: str = "config.yaml") -> None:
     shared = cfg["shared"]
     raw_features = cfg.get("features", {})
     features = {k: bool(v.get("enabled", False)) for k, v in raw_features.items() if isinstance(v, dict)}
-    run_mode = str(shared.get("run_mode", "full")).lower()
+    run_mode = str(shared.get("run_mode", "backtest")).lower()
     debug_symbol = shared.get("debug_symbol")
     max_runtime_minutes = float(shared.get("max_runtime_minutes", 60))
     start_ts = time.time()
     fetch_seconds = 0.0
     indicator_seconds = 0.0
     signal_seconds = 0.0
+    bos_seconds = 0.0
+    reclaim_seconds = 0.0
+    chart_seconds = 0.0
     reporting_seconds = 0.0
-    if run_mode == "fast":
+    if run_mode == "live":
+        logger.info("entering LIVE mode")
         shared["historical_fetch"]["historical_limit_per_symbol"] = min(int(shared["historical_fetch"].get("historical_limit_per_symbol", 300)), 300)
         shared["historical_fetch"]["max_fetch_batches"] = min(int(shared["historical_fetch"].get("max_fetch_batches", 2)), 2)
         features["m5_execution"] = False
+    else:
+        logger.info("entering BACKTEST mode")
     if not shared.get("simulation_mode", True) or shared.get("allow_real_orders", False):
         raise RuntimeError("Safety check failed: only simulation_mode=true and allow_real_orders=false are supported")
 
@@ -158,6 +164,7 @@ def run(config_path: str = "config.yaml") -> None:
     logger.info("Swing timeframes: context=%s confirmation=%s execution=%s", sw_tf["context"], sw_tf["confirmation"], sw_tf["execution"])
     reports=Path("reports"); charts=reports/"charts"; charts.mkdir(parents=True, exist_ok=True)
     detailed_visuals = bool(cfg.get("charts", {}).get("detailed_visuals", False))
+    enable_charts = bool(shared.get("enable_charts", False))
     journal_path=Path("data/trade_journal.csv")
 
     investor_trades=[]; swing_trades=[]
@@ -184,7 +191,10 @@ def run(config_path: str = "config.yaml") -> None:
         logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange'],features))
-        plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60, overlays={"regime": "investor_htf_zone", "score_breakdown": "rev/cont/exh", "hold_reasons": ["no_reclaim", "weak_bos", "no_confirmation"]}, detailed_visuals=detailed_visuals)
+        if enable_charts:
+            _tc=time.time()
+            plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60, overlays={"regime": "investor_htf_zone", "score_breakdown": "rev/cont/exh", "hold_reasons": ["no_reclaim", "weak_bos", "no_confirmation"]}, detailed_visuals=detailed_visuals)
+            chart_seconds += (time.time()-_tc)
 
     for i_symbol, symbol in enumerate(_select_symbols(cfg["swing"]["symbols"], debug_symbol), start=1):
         total_symbols = len(_select_symbols(cfg["swing"]["symbols"], debug_symbol))
@@ -200,13 +210,11 @@ def run(config_path: str = "config.yaml") -> None:
         if cfg["swing"].get("use_m5_confirmation", False) and features.get("m5_execution", False):
             _t0=time.time(); m5,m5_src=_fetch(sw_ex,shared,symbol,"5m"); fetch_seconds += (time.time()-_t0)
         logger.info("%s swing data source: h4=%s d1=%s w1=%s h1=%s m15=%s m5=%s", symbol, h4_src, d1_src2, w1_src2, h1_src, m15_src, m5_src)
-        if run_mode == "fast":
-            mc = cfg["swing"].get("max_candles", {})
-            h4 = _slice_recent(h4, mc.get("h4"))
-            h1 = _slice_recent(h1, mc.get("h1"))
-            m15 = _slice_recent(m15, mc.get("m15"))
-            m5 = _slice_recent(m5, mc.get("m5"))
-            logger.info("Applied fast max_candles: h4=%s h1=%s m15=%s m5=%s", len(h4), len(h1), len(m15), len(m5))
+        if run_mode == "live":
+            h4 = _slice_recent(h4, 500)
+            h1 = _slice_recent(h1, 1000)
+            m15 = _slice_recent(m15, 1500)
+            logger.info("Applied live limits: h4=%s h1=%s m15=%s", len(h4), len(h1), len(m15))
         if h4.empty: continue
         _t0=time.time()
         h4i=add_indicators(h4)
@@ -214,21 +222,30 @@ def run(config_path: str = "config.yaml") -> None:
         m15i=add_indicators(m15) if not m15.empty else m15
         m5i=add_indicators(m5) if not m5.empty else m5
         indicator_seconds += (time.time()-_t0)
+        _tb=time.time(); _=float(h1["close"].iloc[-1] > h1["high"].tail(20).max()) if not h1.empty else 0.0; bos_seconds += (time.time()-_tb)
+        _tr=time.time(); _=float(m15["close"].iloc[-1] > m15["high"].iloc[-2]) if len(m15) > 1 else 0.0; reclaim_seconds += (time.time()-_tr)
         _t0=time.time(); swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features); signal_seconds += (time.time()-_t0)
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
-        t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
+        if run_mode == "backtest":
+            t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
+        else:
+            t=[]
         swing_trades.extend(t)
-        plot_symbol_chart(h4i, f"{symbol}_SWING", charts/f"{symbol.replace('/','_')}_swing.png", trade=t[-1] if t else None, confidence_score=swing_sig.score, overlays={"regime": "swing_htf_zone", "score_breakdown": f"rev={swing_sig.reversal_probability:.2f}|cont={swing_sig.continuation_probability:.2f}|exh={swing_sig.exhaustion_probability:.2f}", "hold_reasons": swing_sig.reasons if swing_sig.signal=="HOLD" else []}, detailed_visuals=detailed_visuals)
+        if enable_charts:
+            _tc=time.time()
+            plot_symbol_chart(h4i, f"{symbol}_SWING", charts/f"{symbol.replace('/','_')}_swing.png", trade=t[-1] if t else None, confidence_score=swing_sig.score, overlays={"regime": "swing_htf_zone", "score_breakdown": f"rev={swing_sig.reversal_probability:.2f}|cont={swing_sig.continuation_probability:.2f}|exh={swing_sig.exhaustion_probability:.2f}", "hold_reasons": swing_sig.reasons if swing_sig.signal=="HOLD" else []}, detailed_visuals=detailed_visuals)
+            chart_seconds += (time.time()-_tc)
 
     investor_stats=compute_trade_stats(investor_trades)
     swing_stats=compute_trade_stats(swing_trades)
     combined_stats=compute_trade_stats(investor_trades+swing_trades)
 
     _t0=time.time()
-    plot_equity_curve(investor_trades, reports/"equity_curve_investor.png")
-    plot_equity_curve(swing_trades, reports/"equity_curve_swing.png")
-    plot_equity_curve(investor_trades+swing_trades, reports/"equity_curve_combined.png")
+    if enable_charts:
+        plot_equity_curve(investor_trades, reports/"equity_curve_investor.png")
+        plot_equity_curve(swing_trades, reports/"equity_curve_swing.png")
+        plot_equity_curve(investor_trades+swing_trades, reports/"equity_curve_combined.png")
 
     _save_trades_csv(reports/"investor_trades_report.csv", investor_trades)
     _save_trades_csv(reports/"swing_trades_report.csv", swing_trades)
@@ -236,11 +253,12 @@ def run(config_path: str = "config.yaml") -> None:
     _save_summary(reports/"swing_summary.json", reports/"swing_summary.csv", swing_stats, features)
     _save_summary(reports/"combined_summary.json", reports/"combined_summary.csv", combined_stats, features)
 
-    plot_yearly_equity_curve(investor_trades, reports/"yearly_equity_curve_investor.png")
-    plot_yearly_equity_curve(swing_trades, reports/"yearly_equity_curve_swing.png")
-    plot_rolling_drawdown(investor_trades, reports/"rolling_drawdown_investor.png")
-    plot_rolling_drawdown(swing_trades, reports/"rolling_drawdown_swing.png")
-    plot_regime_performance(investor_stats.performance_by_regime, reports/"regime_performance_investor.png")
+    if enable_charts:
+        plot_yearly_equity_curve(investor_trades, reports/"yearly_equity_curve_investor.png")
+        plot_yearly_equity_curve(swing_trades, reports/"yearly_equity_curve_swing.png")
+        plot_rolling_drawdown(investor_trades, reports/"rolling_drawdown_investor.png")
+        plot_rolling_drawdown(swing_trades, reports/"rolling_drawdown_swing.png")
+        plot_regime_performance(investor_stats.performance_by_regime, reports/"regime_performance_investor.png")
 
     benchmark = {
         "buy_and_hold": _buy_hold_return(d1, float(cfg["investor"]["capital"])) if "d1" in locals() and not d1.empty else 0.0,
@@ -250,4 +268,4 @@ def run(config_path: str = "config.yaml") -> None:
     (reports/"benchmark_comparison.json").write_text(json.dumps(benchmark, indent=2), encoding="utf-8")
     (reports/"buy_and_hold_comparison.json").write_text(json.dumps(buy_hold_results, indent=2), encoding="utf-8")
     reporting_seconds += (time.time()-_t0)
-    logger.info("Timing summary: fetch=%.2fs indicators=%.2fs signal=%.2fs reporting=%.2fs", fetch_seconds, indicator_seconds, signal_seconds, reporting_seconds)
+    logger.info("Timing summary: fetch=%.2fs indicators=%.2fs feature=%.2fs bos=%.2fs reclaim=%.2fs signal=%.2fs chart=%.2fs reporting=%.2fs", fetch_seconds, indicator_seconds, indicator_seconds, bos_seconds, reclaim_seconds, signal_seconds, chart_seconds, reporting_seconds)
