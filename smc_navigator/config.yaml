@@ -47,6 +47,11 @@ swing:
   default_stop_loss_pct: 3
   take_profit_targets_pct: [5, 10, 15]
   max_position_days: 14
+  max_candles:
+    h4: 1000
+    h1: 2000
+    m15: 3000
+    m5: 2000
 
 features:
   predictive_engine:

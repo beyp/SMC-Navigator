@@ -107,6 +107,11 @@ def _select_symbols(symbols: list[str], debug_symbol: str | None) -> list[str]:
         return [s for s in symbols if s == debug_symbol]
     return symbols
 
+def _slice_recent(df: pd.DataFrame, n: int | None) -> pd.DataFrame:
+    if df.empty or not n or n <= 0:
+        return df
+    return df.tail(int(n)).reset_index(drop=True)
+
 def run(config_path: str = "config.yaml") -> None:
     logger = get_logger()
     cfg = ensure_timeframes(load_config(config_path))
@@ -117,6 +122,10 @@ def run(config_path: str = "config.yaml") -> None:
     debug_symbol = shared.get("debug_symbol")
     max_runtime_minutes = float(shared.get("max_runtime_minutes", 60))
     start_ts = time.time()
+    fetch_seconds = 0.0
+    indicator_seconds = 0.0
+    signal_seconds = 0.0
+    reporting_seconds = 0.0
     if run_mode == "fast":
         shared["historical_fetch"]["historical_limit_per_symbol"] = min(int(shared["historical_fetch"].get("historical_limit_per_symbol", 300)), 300)
         shared["historical_fetch"]["max_fetch_batches"] = min(int(shared["historical_fetch"].get("max_fetch_batches", 2)), 2)
@@ -181,21 +190,30 @@ def run(config_path: str = "config.yaml") -> None:
         if _deadline_exceeded(start_ts, max_runtime_minutes):
             logger.warning("Max runtime reached, stopping gracefully before swing symbol %s", symbol); break
         logger.info("Progress swing symbol %s/%s (%s)", i_symbol, total_symbols, symbol)
-        h4,h4_src=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution']); logger.info("timeframe 1/5 execution candles=%s source=%s", len(h4), h4_src)
-        d1,d1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation']); logger.info("timeframe 2/5 confirmation candles=%s source=%s", len(d1), d1_src2)
-        w1,w1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context']); logger.info("timeframe 3/5 context candles=%s source=%s", len(w1), w1_src2)
-        h1,h1_src=_fetch(sw_ex,shared,symbol,"1h"); logger.info("timeframe 4/5 h1 candles=%s source=%s", len(h1), h1_src)
-        m15,m15_src=_fetch(sw_ex,shared,symbol,"15m"); logger.info("timeframe 5/5 m15 candles=%s source=%s", len(m15), m15_src)
+        _t0=time.time(); h4,h4_src=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution']); fetch_seconds += (time.time()-_t0); logger.info("timeframe 1/5 execution candles=%s source=%s", len(h4), h4_src)
+        _t0=time.time(); d1,d1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation']); fetch_seconds += (time.time()-_t0); logger.info("timeframe 2/5 confirmation candles=%s source=%s", len(d1), d1_src2)
+        _t0=time.time(); w1,w1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context']); fetch_seconds += (time.time()-_t0); logger.info("timeframe 3/5 context candles=%s source=%s", len(w1), w1_src2)
+        _t0=time.time(); h1,h1_src=_fetch(sw_ex,shared,symbol,"1h"); fetch_seconds += (time.time()-_t0); logger.info("timeframe 4/5 h1 candles=%s source=%s", len(h1), h1_src)
+        _t0=time.time(); m15,m15_src=_fetch(sw_ex,shared,symbol,"15m"); fetch_seconds += (time.time()-_t0); logger.info("timeframe 5/5 m15 candles=%s source=%s", len(m15), m15_src)
         m5,m5_src = (pd.DataFrame(), "skipped")
         if cfg["swing"].get("use_m5_confirmation", False) and features.get("m5_execution", False):
-            m5,m5_src=_fetch(sw_ex,shared,symbol,"5m")
+            _t0=time.time(); m5,m5_src=_fetch(sw_ex,shared,symbol,"5m"); fetch_seconds += (time.time()-_t0)
         logger.info("%s swing data source: h4=%s d1=%s w1=%s h1=%s m15=%s m5=%s", symbol, h4_src, d1_src2, w1_src2, h1_src, m15_src, m5_src)
+        if run_mode == "fast":
+            mc = cfg["swing"].get("max_candles", {})
+            h4 = _slice_recent(h4, mc.get("h4"))
+            h1 = _slice_recent(h1, mc.get("h1"))
+            m15 = _slice_recent(m15, mc.get("m15"))
+            m5 = _slice_recent(m5, mc.get("m5"))
+            logger.info("Applied fast max_candles: h4=%s h1=%s m15=%s m5=%s", len(h4), len(h1), len(m15), len(m5))
         if h4.empty: continue
+        _t0=time.time()
         h4i=add_indicators(h4)
         h1i=add_indicators(h1) if not h1.empty else h1
         m15i=add_indicators(m15) if not m15.empty else m15
         m5i=add_indicators(m5) if not m5.empty else m5
-        swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features)
+        indicator_seconds += (time.time()-_t0)
+        _t0=time.time(); swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features); signal_seconds += (time.time()-_t0)
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
         t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
@@ -206,6 +224,7 @@ def run(config_path: str = "config.yaml") -> None:
     swing_stats=compute_trade_stats(swing_trades)
     combined_stats=compute_trade_stats(investor_trades+swing_trades)
 
+    _t0=time.time()
     plot_equity_curve(investor_trades, reports/"equity_curve_investor.png")
     plot_equity_curve(swing_trades, reports/"equity_curve_swing.png")
     plot_equity_curve(investor_trades+swing_trades, reports/"equity_curve_combined.png")
@@ -229,3 +248,5 @@ def run(config_path: str = "config.yaml") -> None:
     }
     (reports/"benchmark_comparison.json").write_text(json.dumps(benchmark, indent=2), encoding="utf-8")
     (reports/"buy_and_hold_comparison.json").write_text(json.dumps(buy_hold_results, indent=2), encoding="utf-8")
+    reporting_seconds += (time.time()-_t0)
+    logger.info("Timing summary: fetch=%.2fs indicators=%.2fs signal=%.2fs reporting=%.2fs", fetch_seconds, indicator_seconds, signal_seconds, reporting_seconds)
