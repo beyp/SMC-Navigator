@@ -95,7 +95,10 @@ def fetch_candles_df(
         if until:
             merged = merged[merged["timestamp"] <= pd.Timestamp(until)]
         merged = merged.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
-        return merged, "cache"
+        if len(merged) >= min(limit, 50):
+            LOGGER.info("cache hit %s %s (%s candles)", symbol, timeframe, len(merged))
+            return merged, "cache"
+        LOGGER.info("cache incomplete %s %s (%s candles), calling api", symbol, timeframe, len(merged))
 
     if not cached_df.empty and refresh_market_data:
         last_cached = cached_df["timestamp"].max()

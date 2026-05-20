@@ -1,6 +1,7 @@
 from dataclasses import asdict
 from pathlib import Path
 import json
+import time
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -98,12 +99,28 @@ def _buy_hold_return(daily: pd.DataFrame, capital: float) -> float:
     return capital * ((last / first) - 1)
 
 
+def _deadline_exceeded(start_ts: float, max_runtime_minutes: float) -> bool:
+    return (time.time() - start_ts) > max_runtime_minutes * 60
+
+def _select_symbols(symbols: list[str], debug_symbol: str | None) -> list[str]:
+    if debug_symbol:
+        return [s for s in symbols if s == debug_symbol]
+    return symbols
+
 def run(config_path: str = "config.yaml") -> None:
     logger = get_logger()
     cfg = ensure_timeframes(load_config(config_path))
     shared = cfg["shared"]
     raw_features = cfg.get("features", {})
     features = {k: bool(v.get("enabled", False)) for k, v in raw_features.items() if isinstance(v, dict)}
+    run_mode = str(shared.get("run_mode", "full")).lower()
+    debug_symbol = shared.get("debug_symbol")
+    max_runtime_minutes = float(shared.get("max_runtime_minutes", 60))
+    start_ts = time.time()
+    if run_mode == "fast":
+        shared["historical_fetch"]["historical_limit_per_symbol"] = min(int(shared["historical_fetch"].get("historical_limit_per_symbol", 300)), 300)
+        shared["historical_fetch"]["max_fetch_batches"] = min(int(shared["historical_fetch"].get("max_fetch_batches", 2)), 2)
+        features["m5_execution"] = False
     if not shared.get("simulation_mode", True) or shared.get("allow_real_orders", False):
         raise RuntimeError("Safety check failed: only simulation_mode=true and allow_real_orders=false are supported")
 
@@ -139,28 +156,36 @@ def run(config_path: str = "config.yaml") -> None:
     logger.info("Investor strategy exchange=%s capital=%s fees(maker/taker)=%.3f/%.3f", cfg['investor']['exchange'], cfg['investor']['capital'], cfg['investor']['maker_fee_pct'], cfg['investor']['taker_fee_pct'])
     logger.info("Swing strategy exchange=%s capital=%s fees(maker/taker)=%.3f/%.3f", cfg['swing']['exchange'], cfg['swing']['capital'], cfg['swing']['maker_fee_pct'], cfg['swing']['taker_fee_pct'])
 
-    for symbol in cfg["investor"]["symbols"]:
+    for i_symbol, symbol in enumerate(_select_symbols(cfg["investor"]["symbols"], debug_symbol), start=1):
+        total_symbols = len(_select_symbols(cfg["investor"]["symbols"], debug_symbol))
+        if _deadline_exceeded(start_ts, max_runtime_minutes):
+            logger.warning("Max runtime reached, stopping gracefully before investor symbol %s", symbol); break
+        logger.info("Progress investor symbol %s/%s (%s)", i_symbol, total_symbols, symbol)
         # larger historical windows for investor cycle testing
         shared_hist = shared["historical_fetch"]
         original_limit = shared_hist["historical_limit_per_symbol"]
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 240)
-        m1,m1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['macro'])
+        m1,m1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['macro']); logger.info("timeframe 1/3 macro candles=%s source=%s", len(m1), m1_src)
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 300)
-        w1,w1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['confirmation'])
+        w1,w1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['confirmation']); logger.info("timeframe 2/3 confirmation candles=%s source=%s", len(w1), w1_src)
         shared_hist["historical_limit_per_symbol"] = max(original_limit, 1100)
-        d1,d1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['timing'])
+        d1,d1_src=_fetch(inv_ex,shared,symbol,cfg['investor']['timeframes']['timing']); logger.info("timeframe 3/3 timing candles=%s source=%s", len(d1), d1_src)
         shared_hist["historical_limit_per_symbol"] = original_limit
         logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange'],features))
         plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60)
 
-    for symbol in cfg["swing"]["symbols"]:
-        h4,h4_src=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution'])
-        d1,d1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation'])
-        w1,w1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context'])
-        h1,h1_src=_fetch(sw_ex,shared,symbol,"1h")
-        m15,m15_src=_fetch(sw_ex,shared,symbol,"15m")
+    for i_symbol, symbol in enumerate(_select_symbols(cfg["swing"]["symbols"], debug_symbol), start=1):
+        total_symbols = len(_select_symbols(cfg["swing"]["symbols"], debug_symbol))
+        if _deadline_exceeded(start_ts, max_runtime_minutes):
+            logger.warning("Max runtime reached, stopping gracefully before swing symbol %s", symbol); break
+        logger.info("Progress swing symbol %s/%s (%s)", i_symbol, total_symbols, symbol)
+        h4,h4_src=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['execution']); logger.info("timeframe 1/5 execution candles=%s source=%s", len(h4), h4_src)
+        d1,d1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['confirmation']); logger.info("timeframe 2/5 confirmation candles=%s source=%s", len(d1), d1_src2)
+        w1,w1_src2=_fetch(sw_ex,shared,symbol,cfg['swing']['timeframes']['context']); logger.info("timeframe 3/5 context candles=%s source=%s", len(w1), w1_src2)
+        h1,h1_src=_fetch(sw_ex,shared,symbol,"1h"); logger.info("timeframe 4/5 h1 candles=%s source=%s", len(h1), h1_src)
+        m15,m15_src=_fetch(sw_ex,shared,symbol,"15m"); logger.info("timeframe 5/5 m15 candles=%s source=%s", len(m15), m15_src)
         m5,m5_src = (pd.DataFrame(), "skipped")
         if cfg["swing"].get("use_m5_confirmation", False) and features.get("m5_execution", False):
             m5,m5_src=_fetch(sw_ex,shared,symbol,"5m")

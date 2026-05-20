@@ -1,6 +1,9 @@
 shared:
   simulation_mode: true
   allow_real_orders: false
+  run_mode: "fast"
+  debug_symbol: null
+  max_runtime_minutes: 30
   historical_fetch:
     refresh_market_data: false
     historical_limit_per_symbol: 1000
