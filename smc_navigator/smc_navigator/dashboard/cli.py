@@ -226,9 +226,19 @@ def run(config_path: str = "config.yaml") -> None:
         _tr=time.time(); _=float(m15["close"].iloc[-1] > m15["high"].iloc[-2]) if len(m15) > 1 else 0.0; reclaim_seconds += (time.time()-_tr)
         _t0=time.time(); swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features); signal_seconds += (time.time()-_t0)
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
+        swing_cfg["max_backtest_iterations_per_symbol"] = int(cfg["swing"].get("max_backtest_iterations_per_symbol", 500))
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
         if run_mode == "backtest":
-            t=run_backtest_for_symbol(swing_cfg,symbol,h4i,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4i)
+            if swing_sig.signal == "HOLD" and bool(cfg["swing"].get("skip_backtest_on_hold", True)):
+                logger.info("Skipping backtest because current signal is HOLD")
+                t = []
+            else:
+                backtest_max_candles = int(cfg["swing"].get("backtest_max_candles", 500))
+                h4_backtest = h4i.tail(backtest_max_candles).reset_index(drop=True)
+                logger.info("Starting swing historical backtest for %s", symbol)
+                _bt0 = time.time()
+                t=run_backtest_for_symbol(swing_cfg,symbol,h4_backtest,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4_backtest)
+                logger.info("Finished swing historical backtest for %s in %.2fs trades=%s", symbol, time.time()-_bt0, len(t))
         else:
             t=[]
         swing_trades.extend(t)

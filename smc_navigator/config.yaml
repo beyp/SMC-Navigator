@@ -53,6 +53,9 @@ swing:
     h1: 2000
     m15: 3000
     m5: 2000
+  skip_backtest_on_hold: true
+  backtest_max_candles: 500
+  max_backtest_iterations_per_symbol: 500
 
 features:
   predictive_engine:
