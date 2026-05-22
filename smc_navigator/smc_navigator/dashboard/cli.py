@@ -121,6 +121,7 @@ def run(config_path: str = "config.yaml") -> None:
     run_mode = str(shared.get("run_mode", "backtest")).lower()
     debug_symbol = shared.get("debug_symbol")
     max_runtime_minutes = float(shared.get("max_runtime_minutes", 60))
+    fast_backtest = bool(shared.get("fast_backtest", False))
     start_ts = time.time()
     fetch_seconds = 0.0
     indicator_seconds = 0.0
@@ -165,6 +166,8 @@ def run(config_path: str = "config.yaml") -> None:
     reports=Path("reports"); charts=reports/"charts"; charts.mkdir(parents=True, exist_ok=True)
     detailed_visuals = bool(cfg.get("charts", {}).get("detailed_visuals", False))
     enable_charts = bool(shared.get("enable_charts", False))
+    if run_mode == "backtest" and fast_backtest:
+        enable_charts = False
     journal_path=Path("data/trade_journal.csv")
 
     investor_trades=[]; swing_trades=[]
@@ -231,10 +234,12 @@ def run(config_path: str = "config.yaml") -> None:
         if run_mode == "backtest":
             backtest_max_candles = int(cfg["swing"].get("backtest_max_candles", 500))
             h4_backtest = h4i.tail(backtest_max_candles).reset_index(drop=True)
+            h1_backtest = h1i.tail(1500).reset_index(drop=True) if fast_backtest and not h1i.empty else (h1i if not h1i.empty else None)
             logger.info("BACKTEST mode: running historical backtest regardless of current signal")
             logger.info("Starting swing historical backtest for %s", symbol)
             _bt0 = time.time()
-            t=run_backtest_for_symbol(swing_cfg,symbol,h4_backtest,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4_backtest)
+            swing_cfg["fast_backtest"] = fast_backtest
+            t=run_backtest_for_symbol(swing_cfg,symbol,h4_backtest,str(journal_path),h1_df=h1_backtest,h4_df=h4_backtest)
             logger.info("Finished swing historical backtest for %s in %.2fs trades=%s", symbol, time.time()-_bt0, len(t))
         else:
             if swing_sig.signal == "HOLD" and bool(cfg["swing"].get("skip_backtest_on_hold", True)):

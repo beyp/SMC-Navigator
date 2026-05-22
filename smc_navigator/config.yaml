@@ -5,6 +5,7 @@ shared:
   debug_symbol: null
   max_runtime_minutes: 30
   enable_charts: false
+  fast_backtest: true
   historical_fetch:
     refresh_market_data: false
     historical_limit_per_symbol: 1000

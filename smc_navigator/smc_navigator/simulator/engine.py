@@ -89,14 +89,19 @@ def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame
     taker_fee_pct, spread_pct = float(config.get("taker_fee_pct", 0.0)), float(config.get("spread_pct", 0.0))
     cooldown = int(config.get("cooldown_candles_after_trade", 0)); cooldown_until_idx=-1; symbol_trade_count=0
 
+    prep_t0 = pd.Timestamp.utcnow()
     max_iters = int(config.get("max_backtest_iterations_per_symbol", 500))
+    fast_backtest = bool(config.get("fast_backtest", False))
     start_idx = max(warmup, len(enriched_df) - 1 - max_iters)
-    h1_ts = h1_df["timestamp"].values if h1_df is not None and not h1_df.empty else None
-    h4_ts = h4_df["timestamp"].values if h4_df is not None and not h4_df.empty else None
+    enriched_df = enriched_df.reset_index(drop=True)
+    enriched_df["_bos_up"] = (enriched_df["close"] > enriched_df["high"].rolling(20, min_periods=1).max().shift(1)) & (enriched_df["close"].shift(1) <= enriched_df["high"].rolling(20, min_periods=1).max().shift(1))
+    enriched_df["_bos_down"] = (enriched_df["close"] < enriched_df["low"].rolling(20, min_periods=1).min().shift(1)) & (enriched_df["close"].shift(1) >= enriched_df["low"].rolling(20, min_periods=1).min().shift(1))
+    print(f"Backtest {symbol} preprocessing_seconds={(pd.Timestamp.utcnow()-prep_t0).total_seconds():.2f}")
+    iter_t0 = pd.Timestamp.utcnow()
     for idx in range(start_idx, len(enriched_df) - 1):
         if idx % 100 == 0:
             print(f"Backtest {symbol} idx={idx}/{len(enriched_df)-1} trades={len(trades)}")
-        history = enriched_df.iloc[: idx + 1]
+        history = enriched_df.iloc[max(0, idx - 120): idx + 1] if fast_backtest else enriched_df.iloc[: idx + 1]
         h1_close = h1_ema50 = None
         h1_hist = h4_hist = None
         if h1_df is not None and not h1_df.empty:
@@ -132,4 +137,5 @@ def run_backtest_for_symbol(config: dict, symbol: str, enriched_df: pd.DataFrame
         trades.append(trade)
         symbol_trade_count += 1
         cooldown_until_idx = outcome_end - 1 + cooldown
+    print(f"Backtest {symbol} iteration_seconds={(pd.Timestamp.utcnow()-iter_t0).total_seconds():.2f}")
     return trades
