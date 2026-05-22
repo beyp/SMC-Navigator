@@ -41,11 +41,11 @@ swing:
   maker_fee_pct: 0.075
   taker_fee_pct: 0.075
   spread_pct: 0.05
-  use_m5_confirmation: false
+  use_m5_confirmation: true
   timeframes:
-    context: "1w"
-    confirmation: "1d"
-    execution: "4h"
+    context: "4h"
+    confirmation: "1h"
+    execution: "15m"
   default_stop_loss_pct: 3
   take_profit_targets_pct: [5, 10, 15]
   max_position_days: 14
@@ -93,4 +93,4 @@ features:
     enabled: true
 
 charts:
-  detailed_visuals: false
+  detailed_visuals: true
