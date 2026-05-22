@@ -229,17 +229,16 @@ def run(config_path: str = "config.yaml") -> None:
         swing_cfg["max_backtest_iterations_per_symbol"] = int(cfg["swing"].get("max_backtest_iterations_per_symbol", 500))
         logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
         if run_mode == "backtest":
-            if swing_sig.signal == "HOLD" and bool(cfg["swing"].get("skip_backtest_on_hold", True)):
-                logger.info("Skipping backtest because current signal is HOLD")
-                t = []
-            else:
-                backtest_max_candles = int(cfg["swing"].get("backtest_max_candles", 500))
-                h4_backtest = h4i.tail(backtest_max_candles).reset_index(drop=True)
-                logger.info("Starting swing historical backtest for %s", symbol)
-                _bt0 = time.time()
-                t=run_backtest_for_symbol(swing_cfg,symbol,h4_backtest,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4_backtest)
-                logger.info("Finished swing historical backtest for %s in %.2fs trades=%s", symbol, time.time()-_bt0, len(t))
+            backtest_max_candles = int(cfg["swing"].get("backtest_max_candles", 500))
+            h4_backtest = h4i.tail(backtest_max_candles).reset_index(drop=True)
+            logger.info("BACKTEST mode: running historical backtest regardless of current signal")
+            logger.info("Starting swing historical backtest for %s", symbol)
+            _bt0 = time.time()
+            t=run_backtest_for_symbol(swing_cfg,symbol,h4_backtest,str(journal_path),h1_df=h1i if not h1i.empty else None,h4_df=h4_backtest)
+            logger.info("Finished swing historical backtest for %s in %.2fs trades=%s", symbol, time.time()-_bt0, len(t))
         else:
+            if swing_sig.signal == "HOLD" and bool(cfg["swing"].get("skip_backtest_on_hold", True)):
+                logger.info("LIVE mode: skipping historical backtest if HOLD")
             t=[]
         swing_trades.extend(t)
         if enable_charts:
