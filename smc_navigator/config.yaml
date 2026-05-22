@@ -57,6 +57,15 @@ swing:
   skip_backtest_on_hold: true
   backtest_max_candles: 500
   max_backtest_iterations_per_symbol: 500
+  trigger_engine:
+    enabled: true
+    require_h1_bos: true
+    require_pullback_zone: true
+    require_m15_reclaim: true
+    allowed_pullback_levels: [0.3, 0.5, 0.618]
+    max_extension_pct: 2.5
+    min_rr_ratio: 1.5
+    allow_short: false
 
 features:
   predictive_engine:

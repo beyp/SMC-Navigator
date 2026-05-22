@@ -118,6 +118,7 @@ def run(config_path: str = "config.yaml") -> None:
     shared = cfg["shared"]
     raw_features = cfg.get("features", {})
     features = {k: bool(v.get("enabled", False)) for k, v in raw_features.items() if isinstance(v, dict)}
+    features["trigger_engine"] = cfg.get("swing", {}).get("trigger_engine", {})
     run_mode = str(shared.get("run_mode", "backtest")).lower()
     debug_symbol = shared.get("debug_symbol")
     max_runtime_minutes = float(shared.get("max_runtime_minutes", 60))
@@ -194,6 +195,9 @@ def run(config_path: str = "config.yaml") -> None:
         logger.info("%s investor data source: m1=%s w1=%s d1=%s", symbol, m1_src, w1_src, d1_src)
         if d1.empty: continue
         investor_trades.extend(_simulate_investor_trades(symbol,d1,w1,m1,float(cfg['investor']['capital']),cfg['investor']['exchange'],features))
+        d1 = d1.copy()
+        d1["reversal_probability"] = 0.0
+        d1["continuation_probability"] = 0.0
         if enable_charts:
             _tc=time.time()
             plot_symbol_chart(add_indicators(d1), f"{symbol}_INVESTOR", charts/f"{symbol.replace('/','_')}_investor.png", trade=investor_trades[-1] if investor_trades else None, confidence_score=60, overlays={"regime": "investor_htf_zone", "score_breakdown": "rev/cont/exh", "hold_reasons": ["no_reclaim", "weak_bos", "no_confirmation"]}, detailed_visuals=detailed_visuals)
@@ -228,9 +232,11 @@ def run(config_path: str = "config.yaml") -> None:
         _tb=time.time(); _=float(h1["close"].iloc[-1] > h1["high"].tail(20).max()) if not h1.empty else 0.0; bos_seconds += (time.time()-_tb)
         _tr=time.time(); _=float(m15["close"].iloc[-1] > m15["high"].iloc[-2]) if len(m15) > 1 else 0.0; reclaim_seconds += (time.time()-_tr)
         _t0=time.time(); swing_sig=evaluate_swing_signal(w1,d1,h4,h1=h1i if not h1i.empty else None,m15=m15i if not m15i.empty else None,m5=m5i if not m5i.empty else None,features=features); signal_seconds += (time.time()-_t0)
+        h4i["reversal_probability"] = swing_sig.reversal_probability
+        h4i["continuation_probability"] = swing_sig.continuation_probability
         swing_cfg={"exchange":cfg['swing']['exchange'],"timeframe":cfg['swing']['timeframes']['execution'],"starting_capital":cfg['swing']['capital'],"risk_per_trade_pct":1.0,"default_stop_loss_pct":cfg['swing']['default_stop_loss_pct'],"default_take_profit_pct":cfg['swing']['take_profit_targets_pct'][0],"maker_fee_pct":cfg['swing']['maker_fee_pct'],"taker_fee_pct":cfg['swing']['taker_fee_pct'],"spread_pct":cfg['swing']['spread_pct']}
         swing_cfg["max_backtest_iterations_per_symbol"] = int(cfg["swing"].get("max_backtest_iterations_per_symbol", 500))
-        logger.info("Swing signal %s %s score=%s tags=%s pullback=[%.4f, %.4f, %.4f]", symbol, swing_sig.signal, swing_sig.score, swing_sig.tags, swing_sig.pullback_30 or 0.0, swing_sig.pullback_50 or 0.0, swing_sig.pullback_618 or 0.0)
+        logger.info("Swing %s %s score=%s h4=%s h1=%s bos=%s pullback=%s m15=%s missing=%s", symbol, swing_sig.signal, swing_sig.score, swing_sig.h4_context, swing_sig.h1_structure, swing_sig.bos_direction, swing_sig.pullback_zone, swing_sig.m15_confirmation, swing_sig.missing_conditions)
         if run_mode == "backtest":
             backtest_max_candles = int(cfg["swing"].get("backtest_max_candles", 500))
             h4_backtest = h4i.tail(backtest_max_candles).reset_index(drop=True)
