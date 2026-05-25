@@ -1,0 +1,109 @@
+shared:
+  simulation_mode: true
+  allow_real_orders: false
+  run_mode: "live"   # live | backtest
+  debug_symbol: null
+  max_runtime_minutes: 30
+  enable_charts: false
+  fast_backtest: true
+  historical_fetch:
+    refresh_market_data: false
+    historical_limit_per_symbol: 1000
+    backtest_since: "2025-01-01T00:00:00Z"
+    backtest_until: null
+    max_fetch_batches: 10
+    request_delay_seconds: 2
+    max_retries: 5
+    retry_backoff_seconds: 5
+
+investor:
+  enabled: true
+  exchange: kraken
+  capital: 70
+  symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
+  maker_fee_pct: 0.16
+  taker_fee_pct: 0.26
+  spread_pct: 0.05
+  timeframes:
+    macro: "1M"
+    confirmation: "1w"
+    timing: "1d"
+  default_stop_loss_pct: 20
+  take_profit_targets_pct: [10, 25, 50, 100]
+  trailing_exit_enabled: true
+  max_position_months: 36
+
+swing:
+  enabled: true
+  exchange: binance
+  capital: 30
+  symbols: ["ETH/EUR", "BTC/EUR", "SOL/EUR", "LINK/EUR"]
+  maker_fee_pct: 0.075
+  taker_fee_pct: 0.075
+  spread_pct: 0.05
+  use_m5_confirmation: false
+  timeframes:
+    context: "1w"
+    confirmation: "1d"
+    execution: "4h"
+  default_stop_loss_pct: 3
+  take_profit_targets_pct: [5, 10, 15]
+  max_position_days: 14
+  max_candles:
+    h4: 1000
+    h1: 2000
+    m15: 3000
+    m5: 2000
+  skip_backtest_on_hold: true
+  backtest_max_candles: 500
+  max_backtest_iterations_per_symbol: 500
+  trigger_engine:
+    enabled: true
+    require_h1_bos: true
+    require_pullback_zone: true
+    require_m15_reclaim: true
+    allowed_pullback_levels: [0.3, 0.5, 0.618]
+    max_extension_pct: 2.5
+    min_rr_ratio: 1.5
+    allow_short: false
+
+features:
+  predictive_engine:
+    enabled: true
+
+  bos_pullback_logic:
+    enabled: true
+
+  reclaim_confirmation:
+    enabled: true
+
+  sweep_detection:
+    enabled: true
+
+  compression_detection:
+    enabled: true
+
+  m5_execution:
+    enabled: false
+
+  volume_confirmation:
+    enabled: false
+
+  investor_regime_filter:
+    enabled: true
+
+charts:
+  detailed_visuals: false
+
+risk:
+  enabled: true
+  risk_per_trade_pct: 1.0
+  max_risk_per_trade_pct: 1.5
+  use_structural_sl: true
+  use_atr_fallback: true
+  atr_multiplier: 1.5
+  default_stop_loss_pct: 3
+  tp_rr_targets: [1.5, 2.0, 3.0]
+  move_to_breakeven_at_rr: 1.0
+  partial_take_profit:
+    enabled: false

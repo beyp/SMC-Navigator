@@ -1,0 +1,1 @@
+"""SMC Navigator package."""

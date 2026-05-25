@@ -1,0 +1,21 @@
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
+
+Direction = Literal["LONG", "SHORT", "NONE"]
+
+
+@dataclass
+class Signal:
+    symbol: str
+    timestamp: datetime
+    direction: Direction
+    confidence_score: int
+    setup_score: int
+    setup_grade: str
+    missing_conditions: list[str]
+    reason: list[str]
+    tags: list[str]
+    entry_price: float
+    suggested_stop_loss: float
+    suggested_take_profit: float
